@@ -28,7 +28,6 @@ import io.circe.generic.semiauto._
  */
 case class OutboundMessage(
   outboundAdapterCallContext: OutboundAdapterCallContext,
-  data: JsonObject
 )
 
 object OutboundMessage {

@@ -90,6 +90,12 @@ object RabbitMQConsumer {
       // Parse the message
       outboundMsg <- parseOutboundMessage(messageJson)
       
+      // Parse raw JSON to extract additional data fields
+      jsonObj <- IO.fromEither(io.circe.parser.parse(messageJson).flatMap(_.as[io.circe.JsonObject]))
+      
+      // Extract data fields (everything except outboundAdapterCallContext)
+      dataFields = jsonObj.filterKeys(_ != "outboundAdapterCallContext")
+      
       _ <- telemetry.recordMessageReceived(
         messageType,
         outboundMsg.outboundAdapterCallContext.correlationId,
@@ -105,7 +111,7 @@ object RabbitMQConsumer {
       // Call CBS connector - use handleMessage method
       cbsResponse <- connector.handleMessage(
         messageType,
-        outboundMsg.data,
+        dataFields,
         callContext
       )
       
