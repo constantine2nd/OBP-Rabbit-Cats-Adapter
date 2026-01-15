@@ -316,36 +316,52 @@ class ConsoleTelemetry extends Telemetry {
   }
 
   override def recordMessageReceived(messageType: String, correlationId: String, queueName: String): IO[Unit] =
+    IO(PrometheusMetrics.messagesReceived.labels(messageType, queueName).inc()) *>
     log("INFO", s"Message received: type=$messageType queue=$queueName", Some(correlationId))
 
   override def recordMessageProcessed(messageType: String, correlationId: String, duration: FiniteDuration): IO[Unit] =
-    log("INFO", s"Message processed: type=$messageType duration=${duration.toMillis}ms", Some(correlationId))
+    IO {
+      PrometheusMetrics.messagesProcessed.labels(messageType).inc()
+      PrometheusMetrics.messageProcessingDuration.labels(messageType).observe(duration.toMillis / 1000.0)
+    } *> log("INFO", s"Message processed: type=$messageType duration=${duration.toMillis}ms", Some(correlationId))
 
   override def recordMessageFailed(messageType: String, correlationId: String, errorCode: String, errorMessage: String, duration: FiniteDuration): IO[Unit] =
+    IO(PrometheusMetrics.messagesFailed.labels(messageType, errorCode).inc()) *>
     log("ERROR", s"Message failed: type=$messageType error=$errorCode message=$errorMessage duration=${duration.toMillis}ms", Some(correlationId))
 
   override def recordResponseSent(messageType: String, correlationId: String, success: Boolean): IO[Unit] =
+    IO(PrometheusMetrics.responsesSent.labels(messageType, success.toString).inc()) *>
     log("INFO", s"Response sent: type=$messageType success=$success", Some(correlationId))
 
   override def recordCBSOperationStart(operation: String, correlationId: String): IO[Unit] =
     log("DEBUG", s"CBS operation started: $operation", Some(correlationId))
 
   override def recordCBSOperationSuccess(operation: String, correlationId: String, duration: FiniteDuration): IO[Unit] =
-    log("INFO", s"CBS operation success: $operation duration=${duration.toMillis}ms", Some(correlationId))
+    IO {
+      PrometheusMetrics.cbsOperations.labels(operation, "success").inc()
+      PrometheusMetrics.cbsOperationDuration.labels(operation).observe(duration.toMillis / 1000.0)
+    } *> log("INFO", s"CBS operation success: $operation duration=${duration.toMillis}ms", Some(correlationId))
 
   override def recordCBSOperationFailure(operation: String, correlationId: String, errorCode: String, errorMessage: String, duration: FiniteDuration): IO[Unit] =
-    log("ERROR", s"CBS operation failed: $operation error=$errorCode message=$errorMessage duration=${duration.toMillis}ms", Some(correlationId))
+    IO {
+      PrometheusMetrics.cbsOperations.labels(operation, "failure").inc()
+      PrometheusMetrics.cbsOperationErrors.labels(operation, errorCode).inc()
+    } *> log("ERROR", s"CBS operation failed: $operation error=$errorCode message=$errorMessage duration=${duration.toMillis}ms", Some(correlationId))
 
   override def recordCBSOperationRetry(operation: String, correlationId: String, attemptNumber: Int, reason: String): IO[Unit] =
+    IO(PrometheusMetrics.cbsOperationRetries.labels(operation).inc()) *>
     log("WARN", s"CBS operation retry: $operation attempt=$attemptNumber reason=$reason", Some(correlationId))
 
   override def recordRabbitMQConnected(host: String, port: Int): IO[Unit] =
+    IO(PrometheusMetrics.rabbitmqConnections.inc()) *>
     log("INFO", s"RabbitMQ connected: $host:$port")
 
   override def recordRabbitMQDisconnected(reason: String): IO[Unit] =
+    IO(PrometheusMetrics.rabbitmqConnections.dec()) *>
     log("WARN", s"RabbitMQ disconnected: $reason")
 
   override def recordRabbitMQConnectionError(errorMessage: String): IO[Unit] =
+    IO(PrometheusMetrics.rabbitmqConnectionErrors.inc()) *>
     log("ERROR", s"RabbitMQ connection error: $errorMessage")
 
   override def recordQueueConsumptionStarted(queueName: String): IO[Unit] =
@@ -355,6 +371,7 @@ class ConsoleTelemetry extends Telemetry {
     log("INFO", s"Queue consumption stopped: $queueName reason=$reason")
 
   override def recordQueueDepth(queueName: String, depth: Long): IO[Unit] =
+    IO(PrometheusMetrics.queueDepth.labels(queueName).set(depth.toDouble)) *>
     log("DEBUG", s"Queue depth: $queueName depth=$depth")
 
   override def recordProcessingRate(messagesPerSecond: Double): IO[Unit] =
@@ -364,15 +381,21 @@ class ConsoleTelemetry extends Telemetry {
     log("DEBUG", s"Memory usage: ${usedMB}MB / ${totalMB}MB")
 
   override def recordPaymentSuccess(bankId: String, amount: BigDecimal, currency: String, correlationId: String): IO[Unit] =
-    log("INFO", s"Payment success: bank=$bankId amount=$amount$currency", Some(correlationId))
+    IO {
+      PrometheusMetrics.paymentsTotal.labels(bankId, currency, "success").inc()
+      PrometheusMetrics.paymentsAmount.labels(bankId, currency).observe(amount.toDouble)
+    } *> log("INFO", s"Payment success: bank=$bankId amount=$amount$currency", Some(correlationId))
 
   override def recordPaymentFailure(bankId: String, amount: BigDecimal, currency: String, errorCode: String, correlationId: String): IO[Unit] =
+    IO(PrometheusMetrics.paymentsTotal.labels(bankId, currency, "failure").inc()) *>
     log("ERROR", s"Payment failure: bank=$bankId amount=$amount$currency error=$errorCode", Some(correlationId))
 
   override def recordAccountCreated(bankId: String, accountType: String, correlationId: String): IO[Unit] =
+    IO(PrometheusMetrics.accountsCreated.labels(bankId, accountType).inc()) *>
     log("INFO", s"Account created: bank=$bankId type=$accountType", Some(correlationId))
 
   override def recordCustomerCreated(bankId: String, correlationId: String): IO[Unit] =
+    IO(PrometheusMetrics.customersCreated.labels(bankId).inc()) *>
     log("INFO", s"Customer created: bank=$bankId", Some(correlationId))
 
   override def recordError(category: String, errorCode: String, errorMessage: String, correlationId: Option[String], additionalContext: Map[String, String]): IO[Unit] =
@@ -403,5 +426,6 @@ class ConsoleTelemetry extends Telemetry {
     log("ERROR", message + throwable.map(t => s" - ${t.getMessage}").getOrElse(""), correlationId)
 
   override def recordHealthCheck(component: String, healthy: Boolean, message: String): IO[Unit] =
+    IO(PrometheusMetrics.healthChecks.labels(component, if (healthy) "healthy" else "unhealthy").inc()) *>
     log("INFO", s"Health check: component=$component healthy=$healthy message=$message")
 }

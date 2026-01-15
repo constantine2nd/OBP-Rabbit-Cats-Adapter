@@ -73,6 +73,12 @@ object DiscoveryServer {
         |}""".stripMargin)
         .map(_.withContentType(`Content-Type`(MediaType.application.json)))
     
+    // Prometheus metrics endpoint
+    case GET -> Root / "metrics" =>
+      import com.tesobe.obp.adapter.telemetry.PrometheusMetrics
+      Ok(PrometheusMetrics.getMetrics)
+        .map(_.withContentType(`Content-Type`(MediaType.text.plain)))
+    
     // Info endpoint (JSON)
     case GET -> Root / "info" =>
       Ok(infoJson(config))
@@ -315,6 +321,7 @@ object DiscoveryServer {
        |                <h2>Health & Status</h2>
        |                <ul class="link-list">
        |                    <li><a href="$serverUrl/health">Health Check</a></li>
+                    <li><a href="$serverUrl/metrics">Prometheus Metrics</a></li>
        |                    <li><a href="$serverUrl/ready">Readiness Check</a></li>
        |                    <li><a href="$serverUrl/info">Service Info (JSON)</a></li>
        |                </ul>
@@ -324,7 +331,7 @@ object DiscoveryServer {
        |            <div class="card">
        |                <h2>RabbitMQ</h2>
        |                <ul class="link-list">
-       |                    <li><a href="$rabbitmqManagementUrl" target="_blank" class="external-link">Management UI</a></li>
+       |                    <li><a href="$rabbitmqManagementUrl" class="external-link">Management UI</a></li>
        |                </ul>
        |                <table class="info-table">
        |                    <tr>
@@ -358,6 +365,9 @@ object DiscoveryServer {
        |                <p style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
        |                    Note: OpenTelemetry metrics are logged via the telemetry interface
        |                </p>
+                <ul class="link-list" style="margin-top: 0.5rem;">
+                    <li><a href="$serverUrl/metrics">Prometheus Metrics</a></li>
+                </ul>
        |            </div>
        |
        |            <!-- CBS Configuration -->
@@ -387,7 +397,8 @@ object DiscoveryServer {
        |            <div class="card">
        |                <h2>Documentation</h2>
        |                <ul class="link-list">
-       |                    <li><a href="https://apiexplorer.openbankproject.com" target="_blank" class="external-link">API Explorer</a></li>
+       |                    <li><a href="${config.http.apiExplorerUrl}/message-docs/rabbitmq_vOct2024" class="external-link">API Explorer</a></li>
+       |                    <li><a href="${config.http.obpApiUrl}/obp/v6.0.0/message-docs/rabbitmq_vOct2024" class="external-link">Message Docs (API)</a></li>
        |                </ul>
        |                <p style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
        |                    Check the README and ARCHITECTURE.md in your project
@@ -505,9 +516,8 @@ object DiscoveryServer {
                         
                         if (response.ok) {
                             const responseData = await response.json();
-                            resultDiv.style.background = '#d1fae5';
-                            resultDiv.style.color = '#065f46';
-                            resultDiv.innerHTML = `
+                            resultDiv.innerHTML += `
+                                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #065f46;">
                                 <strong>Response Received!</strong><br>
                                 <div style="margin-top: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; color: #333;">
                                     <strong>Data:</strong><br>
@@ -520,7 +530,7 @@ object DiscoveryServer {
                             `;
                         } else if (attempts < maxAttempts) {
                             attempts++;
-                            setTimeout(poll, 1000); // Poll every second
+                            setTimeout(poll, 1000);
                         } else {
                             resultDiv.style.background = '#fef3c7';
                             resultDiv.style.color = '#92400e';

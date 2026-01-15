@@ -24,7 +24,9 @@ import scala.concurrent.duration._
 case class HttpConfig(
     host: String,
     port: Int,
-    enabled: Boolean
+    enabled: Boolean,
+    apiExplorerUrl: String,
+    obpApiUrl: String
 )
 
 /** RabbitMQ connection configuration */
@@ -79,7 +81,9 @@ object Config {
     val httpConfig = HttpConfig(
       host = sys.env.getOrElse("HTTP_HOST", "0.0.0.0"),
       port = sys.env.getOrElse("HTTP_PORT", "8099").toInt,
-      enabled = sys.env.getOrElse("HTTP_ENABLED", "true").toBoolean
+      enabled = sys.env.getOrElse("HTTP_ENABLED", "true").toBoolean,
+      apiExplorerUrl = sys.env.getOrElse("API_EXPLORER_URL", "http://localhost:5173"),
+      obpApiUrl = sys.env.getOrElse("OBP_API_URL", "http://localhost:8080")
     )
 
     val rabbitmqConfig = RabbitMQConfig(
