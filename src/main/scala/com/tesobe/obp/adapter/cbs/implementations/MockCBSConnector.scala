@@ -74,10 +74,18 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     IO.pure(
       CBSResponse.success(
         JsonObject(
-          "name" -> Json.fromString(name),
-          "version" -> Json.fromString(version),
-          "git_commit" -> Json.fromString("mock-commit-123"),
-          "date" -> Json.fromString("2025-01-14")
+          "name" -> Json.fromString("OBP-Rabbit-Cats-Adapter"),
+          "version" -> Json.fromString("1.0.0-SNAPSHOT"),
+          "description" -> Json.fromString("Functional RabbitMQ adapter for Open Bank Project"),
+          "connector" -> Json.fromString(name),
+          "connector_version" -> Json.fromString(version),
+          "scala_version" -> Json.fromString("2.13.15"),
+          "cats_effect_version" -> Json.fromString("3.5.7"),
+          "rabbitmq_client" -> Json.fromString("amqp-client 5.20.0"),
+          "http_server_port" -> Json.fromInt(8099),
+          "repository" -> Json.fromString("https://github.com/OpenBankProject/OBP-Rabbit-Cats-Adapter"),
+          "license" -> Json.fromString("Apache License 2.0"),
+          "built_with" -> Json.fromString("Scala, Cats Effect, fs2, http4s, Circe")
         )
       )
     )

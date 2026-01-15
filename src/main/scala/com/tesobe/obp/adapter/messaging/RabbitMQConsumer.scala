@@ -15,6 +15,7 @@ import com.tesobe.obp.adapter.config.AdapterConfig
 import com.tesobe.obp.adapter.interfaces.CBSConnector
 import com.tesobe.obp.adapter.models._
 import com.tesobe.obp.adapter.telemetry.Telemetry
+import com.tesobe.obp.adapter.http.DiscoveryServer
 import io.circe.parser._
 import io.circe.syntax._
 
@@ -191,6 +192,12 @@ object RabbitMQConsumer {
     for {
       // Convert to JSON
       json <- IO.pure(message.asJson.noSpaces)
+      
+      // Cache response for test messages (so web UI can retrieve it)
+      _ <- IO(DiscoveryServer.cacheResponse(
+        message.inboundAdapterCallContext.correlationId,
+        json
+      ))
       
       // Publish message
       _ <- client.publishMessage(channel, responseQueue, json)

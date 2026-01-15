@@ -38,8 +38,21 @@ object DiscoveryServer {
    */
   private var rabbitClient: Option[RabbitMQClient] = None
   
+  /**
+   * Cache for test message responses (correlationId -> response JSON)
+   */
+  private val responseCache = scala.collection.concurrent.TrieMap[String, String]()
+  
   def setRabbitClient(client: RabbitMQClient): Unit = {
     rabbitClient = Some(client)
+  }
+  
+  def cacheResponse(correlationId: String, response: String): Unit = {
+    responseCache.put(correlationId, response)
+  }
+  
+  def getResponse(correlationId: String): Option[String] = {
+    responseCache.get(correlationId)
   }
 
   /**
@@ -90,6 +103,19 @@ object DiscoveryServer {
           InternalServerError(s"""{
             |  "status": "error",
             |  "message": "$error"
+            |}""".stripMargin)
+            .map(_.withContentType(`Content-Type`(MediaType.application.json)))
+      }
+    
+    // Poll for response
+    case GET -> Root / "test" / "response" / correlationId =>
+      getResponse(correlationId) match {
+        case Some(response) =>
+          Ok(response).map(_.withContentType(`Content-Type`(MediaType.application.json)))
+        case None =>
+          NotFound(s"""{
+            |  "status": "not_found",
+            |  "message": "No response found for correlation ID: $correlationId"
             |}""".stripMargin)
             .map(_.withContentType(`Content-Type`(MediaType.application.json)))
       }
@@ -279,7 +305,7 @@ object DiscoveryServer {
        |<body>
        |    <div class="container">
        |        <header>
-       |            <h1>[OBP] Rabbit Cats Adapter</h1>
+       |            <h1>OBP Rabbit Cats Adapter</h1>
        |            <p class="subtitle">Service Discovery & Monitoring Dashboard</p>
        |            <span class="status-badge">[Running]</span>
        |        </header>
@@ -287,7 +313,7 @@ object DiscoveryServer {
        |        <div class="grid">
        |            <!-- Health & Status -->
        |            <div class="card">
-       |                <h2><span class="card-icon">[+]</span> Health & Status</h2>
+       |                <h2>Health & Status</h2>
        |                <ul class="link-list">
        |                    <li><a href="$serverUrl/health">Health Check</a></li>
        |                    <li><a href="$serverUrl/ready">Readiness Check</a></li>
@@ -297,7 +323,7 @@ object DiscoveryServer {
        |
        |            <!-- RabbitMQ -->
        |            <div class="card">
-       |                <h2><span class="card-icon">[R]</span> RabbitMQ</h2>
+       |                <h2>RabbitMQ</h2>
        |                <ul class="link-list">
        |                    <li><a href="$rabbitmqManagementUrl" target="_blank" class="external-link">Management UI</a></li>
        |                </ul>
@@ -319,7 +345,7 @@ object DiscoveryServer {
        |
        |            <!-- Observability -->
        |            <div class="card">
-       |                <h2><span class="card-icon">[M]</span> Observability</h2>
+       |                <h2>Observability</h2>
        |                <table class="info-table">
        |                    <tr>
        |                        <td>Metrics:</td>
@@ -337,7 +363,7 @@ object DiscoveryServer {
        |
        |            <!-- CBS Configuration -->
        |            <div class="card">
-       |                <h2><span class="card-icon">[B]</span> Core Banking System</h2>
+       |                <h2>Core Banking System</h2>
        |                <table class="info-table">
        |                    <tr>
        |                        <td>Base URL:</td>
@@ -360,9 +386,8 @@ object DiscoveryServer {
        |
        |            <!-- Documentation -->
        |            <div class="card">
-       |                <h2><span class="card-icon">[?]</span> Documentation</h2>
+       |                <h2>Documentation</h2>
        |                <ul class="link-list">
-       |                    <li><a href="https://github.com/OpenBankProject/OBP-API/wiki" target="_blank" class="external-link">OBP API Wiki</a></li>
        |                    <li><a href="https://apiexplorer.openbankproject.com" target="_blank" class="external-link">API Explorer</a></li>
        |                </ul>
        |                <p style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
@@ -372,7 +397,7 @@ object DiscoveryServer {
        |
        |            <!-- Quick Actions -->
        |            <div class="card">
-       |                <h2><span class="card-icon">[i]</span> Quick Info</h2>
+       |                <h2>Quick Info</h2>
        |                <table class="info-table">
        |                    <tr>
        |                        <td>Version:</td>
@@ -392,7 +417,7 @@ object DiscoveryServer {
 
             <!-- Test Messages -->
             <div class="card">
-                <h2><span class="card-icon">[T]</span> Test Messages</h2>
+                <h2>Test Messages</h2>
                 <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
                     Send test messages to RabbitMQ to verify the adapter is working
                 </p>
@@ -453,9 +478,12 @@ object DiscoveryServer {
                             Correlation ID: $${data.correlationId}<br>
                             Queue: $${data.queue}<br>
                             <em style="font-size: 0.85rem; margin-top: 0.5rem; display: block;">
-                                Check the adapter logs for processing details
+                                Waiting for response...
                             </em>
                         `;
+                        
+                        // Poll for response
+                        pollForResponse(data.correlationId, resultDiv);
                     } else {
                         resultDiv.style.background = '#fee2e2';
                         resultDiv.style.color = '#991b1b';
@@ -466,6 +494,56 @@ object DiscoveryServer {
                     resultDiv.style.color = '#991b1b';
                     resultDiv.innerHTML = `<strong>Error:</strong> $${error.message}`;
                 }
+            }
+            
+            async function pollForResponse(correlationId, resultDiv) {
+                let attempts = 0;
+                const maxAttempts = 30; // 30 seconds max
+                
+                const poll = async () => {
+                    try {
+                        const response = await fetch(`/test/response/$${correlationId}`);
+                        
+                        if (response.ok) {
+                            const responseData = await response.json();
+                            resultDiv.style.background = '#d1fae5';
+                            resultDiv.style.color = '#065f46';
+                            resultDiv.innerHTML = `
+                                <strong>Response Received!</strong><br>
+                                <div style="margin-top: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; color: #333;">
+                                    <strong>Data:</strong><br>
+                                    <pre style="margin: 0.5rem 0; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word;">$${JSON.stringify(responseData.data, null, 2)}</pre>
+                                </div>
+                                <div style="margin-top: 0.5rem; font-size: 0.85rem;">
+                                    <strong>Status:</strong> $${responseData.status.errorCode || 'SUCCESS'}<br>
+                                    <strong>Correlation ID:</strong> $${responseData.inboundAdapterCallContext.correlationId}
+                                </div>
+                            `;
+                        } else if (attempts < maxAttempts) {
+                            attempts++;
+                            setTimeout(poll, 1000); // Poll every second
+                        } else {
+                            resultDiv.style.background = '#fef3c7';
+                            resultDiv.style.color = '#92400e';
+                            resultDiv.innerHTML = `
+                                <strong>Timeout</strong><br>
+                                No response received after 30 seconds.<br>
+                                Check adapter logs for details.
+                            `;
+                        }
+                    } catch (error) {
+                        if (attempts < maxAttempts) {
+                            attempts++;
+                            setTimeout(poll, 1000);
+                        } else {
+                            resultDiv.style.background = '#fee2e2';
+                            resultDiv.style.color = '#991b1b';
+                            resultDiv.innerHTML = `<strong>Error:</strong> Failed to get response`;
+                        }
+                    }
+                };
+                
+                poll();
             }
         </script>
        |</html>""".stripMargin
