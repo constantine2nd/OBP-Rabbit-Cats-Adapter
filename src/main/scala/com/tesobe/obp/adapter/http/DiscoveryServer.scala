@@ -239,11 +239,17 @@ object DiscoveryServer {
       messages: List[(String, (Long, Long))]
   ): String = {
     val rows = messages
-      .map { case (process, (outbound, inbound)) =>
+      .map { case (process, (consumed, published)) =>
+        val consumedColor =
+          if (consumed > 0) "color: #22c55e; font-weight: bold;" else ""
+        val publishedColor =
+          if (published > 0 && published == consumed)
+            "color: #22c55e; font-weight: bold;"
+          else ""
         s"""<tr>
          |  <td>$process</td>
-         |  <td>$outbound</td>
-         |  <td>$inbound</td>
+         |  <td style="$consumedColor">$consumed</td>
+         |  <td style="$publishedColor">$published</td>
          |</tr>""".stripMargin
       }
       .mkString("\n")
