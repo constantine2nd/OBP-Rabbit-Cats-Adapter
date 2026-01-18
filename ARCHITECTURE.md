@@ -156,7 +156,7 @@ src/main/scala/com/tesobe/obp/adapter/
 trait CBSConnector {
   def name: String
   def version: String
-  
+
   // Core operations
   def getBank(bankId: String, callContext: CallContext): IO[CBSResponse[BankCommons]]
   def getBankAccount(...): IO[CBSResponse[BankAccountCommons]]
@@ -166,6 +166,7 @@ trait CBSConnector {
 ```
 
 **Key Points**:
+
 - All methods return `IO[CBSResponse[T]]` for pure functional effects
 - `CBSResponse` is a sealed trait with `Success` and `Error` cases
 - `CallContext` contains correlation ID, user info, auth context
@@ -183,16 +184,16 @@ trait Telemetry {
   def recordMessageReceived(...)
   def recordMessageProcessed(...)
   def recordMessageFailed(...)
-  
+
   // CBS operations
   def recordCBSOperationStart(...)
   def recordCBSOperationSuccess(...)
   def recordCBSOperationFailure(...)
-  
+
   // Business metrics
   def recordPaymentSuccess(...)
   def recordAccountCreated(...)
-  
+
   // Tracing
   def startSpan(...): IO[String]
   def endSpan(...)
@@ -200,6 +201,7 @@ trait Telemetry {
 ```
 
 **Key Points**:
+
 - Telemetry is injected, not hardcoded
 - Multiple implementations can coexist
 - NoOp implementation for testing
@@ -265,18 +267,18 @@ class MyBankConnector(
   apiKey: String,
   telemetry: Telemetry
 ) extends CBSConnector {
-  
+
   override def name: String = "MyBank-REST-Connector"
   override def version: String = "1.0.0"
-  
+
   override def getBank(bankId: String, callContext: CallContext): IO[CBSResponse[BankCommons]] = {
     for {
       // Start telemetry
       _ <- telemetry.recordCBSOperationStart("getBank", callContext.correlationId)
-      
+
       // Make CBS HTTP call
       result <- httpClient.get(s"$baseUrl/banks/$bankId")
-        .map(response => 
+        .map(response =>
           // Map CBS response to OBP BankCommons
           CBSResponse.success(
             BankCommons(
@@ -295,12 +297,12 @@ class MyBankConnector(
             callContext
           ))
         )
-      
+
       // End telemetry
       _ <- telemetry.recordCBSOperationSuccess("getBank", callContext.correlationId, duration)
     } yield result
   }
-  
+
   // Implement all other CBSConnector methods...
 }
 ```
@@ -319,9 +321,8 @@ val connector: CBSConnector = config.cbsType match {
 ### Step 3: Run Adapter
 
 ```bash
-export CBS_TYPE=mybank
-export CBS_BASE_URL=https://cbs.mybank.com/api
-export CBS_API_KEY=secret123
+export MYBANK_CBS_URL=https://cbs.mybank.com/api
+export MYBANK_CBS_API_KEY=secret123
 export RABBITMQ_HOST=localhost
 export RABBITMQ_REQUEST_QUEUE=obp.request
 export RABBITMQ_RESPONSE_QUEUE=obp.response
@@ -334,6 +335,7 @@ java -jar obp-rabbit-cats-adapter.jar
 ### Environment Variables
 
 **RabbitMQ Configuration**:
+
 - `RABBITMQ_HOST` - RabbitMQ server host
 - `RABBITMQ_PORT` - RabbitMQ server port (default: 5672)
 - `RABBITMQ_USERNAME` - Username for authentication
@@ -342,15 +344,10 @@ java -jar obp-rabbit-cats-adapter.jar
 - `RABBITMQ_RESPONSE_QUEUE` - Queue to send responses to
 
 **CBS Configuration**:
-- `CBS_BASE_URL` - Base URL of your CBS API
-- `CBS_AUTH_TYPE` - Authentication type (none/basic/bearer/custom)
-- `CBS_USERNAME` - Username for basic auth
-- `CBS_PASSWORD` - Password for basic auth
-- `CBS_BEARER_TOKEN` - Token for bearer auth
-- `CBS_TIMEOUT` - Request timeout in seconds
-- `CBS_MAX_RETRIES` - Number of retry attempts
+Your bank-specific CBS connector will define what configuration it needs.
 
 **Telemetry Configuration**:
+
 - `TELEMETRY_TYPE` - Telemetry implementation (console/prometheus/datadog/noop)
 - `ENABLE_METRICS` - Enable metrics collection (true/false)
 
@@ -365,9 +362,9 @@ class MyBankConnectorSpec extends CatsEffectSuite {
   test("getBank returns bank when CBS responds successfully") {
     val connector = new MyBankConnector(mockHttpClient, NoOpTelemetry)
     val result = connector.getBank("bank-id", CallContext("corr-123"))
-    
+
     result.map {
-      case CBSResponse.Success(bank, _, _) => 
+      case CBSResponse.Success(bank, _, _) =>
         assertEquals(bank.bankId, "bank-id")
       case _ => fail("Expected success")
     }
@@ -433,6 +430,7 @@ class MockCBSConnector extends CBSConnector {
 ### Logging
 
 All logs include:
+
 - Correlation ID (for request tracing)
 - Timestamp
 - Log level
@@ -440,6 +438,7 @@ All logs include:
 - Message
 
 Example:
+
 ```
 [INFO][CID: 1flssoftxq0cr1nssr68u0mioj] Message received: type=obp.getBank queue=obp.request
 [INFO][CID: 1flssoftxq0cr1nssr68u0mioj] CBS operation started: getBank
@@ -469,17 +468,17 @@ spec:
   template:
     spec:
       containers:
-      - name: adapter
-        image: obp-rabbit-cats-adapter:latest
-        env:
-        - name: RABBITMQ_HOST
-          value: rabbitmq-service
-        - name: CBS_BASE_URL
-          value: https://cbs.internal
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
+        - name: adapter
+          image: obp-rabbit-cats-adapter:latest
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq-service
+            - name: MYBANK_CBS_URL
+              value: https://cbs.internal
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
 ```
 
 ## Benefits of This Architecture
@@ -490,7 +489,7 @@ spec:
 ✅ **No RabbitMQ knowledge needed** - Already handled  
 ✅ **No OBP message format knowledge needed** - Already handled  
 ✅ **Focus on CBS integration** - Your domain expertise  
-✅ **Telemetry included** - Observability for free  
+✅ **Telemetry included** - Observability for free
 
 ### For Operations Teams
 
@@ -498,7 +497,7 @@ spec:
 ✅ **Pluggable telemetry** - Use your monitoring stack  
 ✅ **Clear metrics** - Know what's happening  
 ✅ **Health checks** - Easy monitoring  
-✅ **Containerizable** - Deploy anywhere  
+✅ **Containerizable** - Deploy anywhere
 
 ### For OBP Team
 
@@ -506,7 +505,7 @@ spec:
 ✅ **Multiple CBS support** - One adapter, many banks  
 ✅ **Consistent interface** - All adapters work the same  
 ✅ **Type-safe** - Compiler catches errors  
-✅ **Functional** - Pure, testable, composable  
+✅ **Functional** - Pure, testable, composable
 
 ## Next Steps
 
@@ -520,4 +519,4 @@ spec:
 
 - **GitHub**: [OBP-Rabbit-Cats-Adapter](https://github.com/OpenBankProject/OBP-Rabbit-Cats-Adapter)
 - **Documentation**: [OBP Wiki](https://github.com/OpenBankProject/OBP-API/wiki)
-- **Community**: OBP Slack channel
+- **Community**: OBP Rocket Chat

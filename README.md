@@ -2,7 +2,7 @@
 
 A functional, type-safe adapter for connecting the Open Bank Project (OBP) API to Core Banking Systems (CBS) via RabbitMQ messaging.
 
-> **⚠️ Important for Banks:** Do NOT clone and modify this repository directly!  
+> **Note to Banks:** Do NOT clone and modify this repository directly.  
 > See **[HOW-BANKS-USE-THIS.md](HOW-BANKS-USE-THIS.md)** for the correct way to use this adapter.
 
 ## Overview
@@ -15,12 +15,12 @@ OBP-API ←→ RabbitMQ ←→ This Adapter ←→ Your CBS (REST/SOAP/etc)
 
 **Key Features**:
 
-- 🔌 **Plugin Architecture**: Implement one interface, get full OBP integration
-- 📊 **Built-in Telemetry**: Metrics, logging, and tracing out of the box
-- 🎯 **Type-Safe**: Leverages Scala's type system to catch errors at compile time
-- 🔄 **Functional**: Pure functional programming with Cats Effect
-- 🏦 **Bank-Agnostic**: Generic OBP message handling, CBS-specific implementations pluggable
-- 📦 **Production-Ready**: Docker support, health checks, graceful shutdown
+- Plugin Architecture: Implement one interface, get full OBP integration
+- Built-in Telemetry: Metrics, logging, and tracing
+- Type-Safe: Leverages Scala's type system to catch errors at compile time
+- Functional: Pure functional programming with Cats Effect
+- Bank-Agnostic: Generic OBP message handling, CBS-specific implementations pluggable
+- Environment support: Docker support, health checks, graceful shutdown
 
 ## Architecture
 
@@ -59,7 +59,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 
 ## Quick Start
 
-**Want to try it right now?**
+Try it now:
 
 ```bash
 # 1. Start RabbitMQ
@@ -148,12 +148,8 @@ RABBITMQ_PASSWORD=guest
 RABBITMQ_REQUEST_QUEUE=obp.request
 RABBITMQ_RESPONSE_QUEUE=obp.response
 
-# CBS Configuration
-CBS_BASE_URL=https://your-cbs-api.bank.com
-CBS_AUTH_TYPE=bearer
-CBS_BEARER_TOKEN=your-api-token
-CBS_TIMEOUT=30
-CBS_MAX_RETRIES=3
+# Your CBS Configuration
+# (Your bank-specific CBS connector will define what config it needs)
 
 # Telemetry
 TELEMETRY_TYPE=console
@@ -184,13 +180,13 @@ http://localhost:8080
 
 The discovery page shows:
 
-- **🏥 **Health & Status\*\* - Health check and readiness endpoints
-- 🐰 **RabbitMQ** - Connection info and management UI link
-- 📊 **Observability** - Metrics and logging configuration
-- 🏛️ **CBS Configuration** - Core Banking System settings
-- 📚 **Documentation** - Links to OBP resources
+- Health & Status - Health check and readiness endpoints
+- RabbitMQ - Connection info and management UI link
+- Observability - Metrics and logging configuration
+- CBS Configuration - Core Banking System settings
+- Documentation - Links to OBP resources
 
-**Available Endpoints:**
+Available Endpoints:
 
 - `GET /` - Discovery page (HTML)
 - `GET /health` - Health check (JSON)
@@ -242,7 +238,7 @@ trait CBSConnector {
 }
 ```
 
-**Note**: You don't need to implement all operations at once. Start with the operations your bank needs, return `CBSResponse.Error` for unimplemented ones.
+Note: You don't need to implement all operations at once. Start with the operations your bank needs, return `CBSResponse.Error` for unimplemented ones.
 
 ## Example: Mock Connector
 
@@ -505,6 +501,14 @@ spec:
 | `RABBITMQ_RESPONSE_QUEUE` | Response queue name  | `obp.response` |
 | `RABBITMQ_PREFETCH_COUNT` | Messages to prefetch | `10`           |
 
+### Redis
+
+| Variable        | Description  | Default     |
+| --------------- | ------------ | ----------- |
+| `REDIS_HOST`    | Redis host   | `localhost` |
+| `REDIS_PORT`    | Redis port   | `6379`      |
+| `REDIS_ENABLED` | Enable Redis | `true`      |
+
 ### Telemetry
 
 | Variable         | Description                    | Default   |
@@ -560,7 +564,7 @@ Apache License 2.0
 - **Separation of Concerns**: [SEPARATION-OF-CONCERNS.md](SEPARATION-OF-CONCERNS.md)
 - **Issues**: [GitHub Issues](https://github.com/OpenBankProject/OBP-Rabbit-Cats-Adapter/issues)
 - **OBP Wiki**: [https://github.com/OpenBankProject/OBP-API/wiki](https://github.com/OpenBankProject/OBP-API/wiki)
-- **Community**: Join OBP Slack
+- **Community**: Join OBP Rocket Chat
 
 ## Credits
 

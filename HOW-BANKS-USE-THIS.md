@@ -2,9 +2,10 @@
 
 ## TL;DR
 
-**DO NOT clone and modify this repository!**
+Do not clone and modify this repository.
 
 Instead:
+
 1. Use this adapter as a **library dependency** or **base Docker image**
 2. Create your **own separate project** with just your CBS connector implementation
 3. Keep your bank-specific code in your own repository
@@ -12,7 +13,7 @@ Instead:
 
 ---
 
-## The Wrong Way ❌
+## The Wrong Way
 
 ```bash
 # DON'T DO THIS:
@@ -22,7 +23,8 @@ cd OBP-Rabbit-Cats-Adapter
 # Now you're stuck - can't easily get updates!
 ```
 
-**Problems with this approach:**
+Problems with this approach:
+
 - Your bank-specific code is mixed with generic code
 - Hard to get upstream updates
 - Merge conflicts when adapter is updated
@@ -31,7 +33,7 @@ cd OBP-Rabbit-Cats-Adapter
 
 ---
 
-## The Right Way ✅
+## The Right Way
 
 ### Option 1: Maven/SBT Dependency (Recommended for Scala shops)
 
@@ -86,18 +88,18 @@ class MyBankConnector(
   config: MyBankConfig,
   telemetry: Telemetry
 ) extends CBSConnector {
-  
+
   override def name: String = "MyBank-Production-Connector"
   override def version: String = "1.0.0"
-  
+
   override def getBank(
-    bankId: String, 
+    bankId: String,
     callContext: CallContext
   ): IO[CBSResponse[BankCommons]] = {
     // YOUR code to call YOUR CBS
     ???
   }
-  
+
   // Implement other methods...
 }
 ```
@@ -113,21 +115,21 @@ import com.tesobe.obp.adapter.AdapterMain
 import com.tesobe.obp.adapter.telemetry.ConsoleTelemetry
 
 object MyBankAdapterMain extends IOApp.Simple {
-  
+
   def run: IO[Unit] = {
     for {
       // Load your bank-specific config
       config <- MyBankConfig.load
-      
+
       // Create telemetry
       telemetry = new ConsoleTelemetry()
-      
+
       // Create YOUR connector
       connector = new MyBankConnector(config, telemetry)
-      
+
       // Run the adapter with YOUR connector
       _ <- AdapterMain.runWithConnector(connector, telemetry)
-      
+
     } yield ()
   }
 }
@@ -231,7 +233,7 @@ Parent `pom.xml`:
 <project>
   <groupId>com.mybank</groupId>
   <artifactId>mybank-obp-parent</artifactId>
-  
+
   <modules>
     <module>adapter</module>              <!-- Generic adapter -->
     <module>mybank-connector</module>     <!-- Your connector -->
@@ -274,7 +276,8 @@ mybank-obp-connector/                  # YOUR repository
 
 ### What You Check Into YOUR Repository
 
-✅ **DO commit:**
+DO commit:
+
 - Your `MyBankConnector.scala` implementation
 - Your `MyBankMain.scala` entry point
 - Your tests
@@ -283,7 +286,8 @@ mybank-obp-connector/                  # YOUR repository
 - `.env.example` (template without secrets)
 - Your documentation
 
-❌ **DON'T commit:**
+DON'T commit:
+
 - Generic adapter code (it's a dependency)
 - `.env` file with real credentials
 - Compiled `.class` files
@@ -299,7 +303,7 @@ mybank-obp-connector/                  # YOUR repository
 // In YOUR repository: mybank-connector/src/main/scala/com/mybank/obp/MyBankConnector.scala
 
 class MyBankConnector(...) extends CBSConnector {
-  
+
   // Add implementation for new operation
   override def makePayment(
     bankId: String,
@@ -307,27 +311,27 @@ class MyBankConnector(...) extends CBSConnector {
     paymentData: PaymentData,
     callContext: CallContext
   ): IO[CBSResponse[TransactionCommons]] = {
-    
+
     for {
       // 1. Validate with YOUR business rules
       _ <- validatePayment(paymentData)
-      
+
       // 2. Call YOUR CBS API
       response <- myBankHttpClient.post(
         url = s"${config.cbsUrl}/payments",
         body = mapToMyBankFormat(paymentData),
         headers = myBankAuthHeaders(callContext)
       )
-      
+
       // 3. Map YOUR response to OBP format
       transaction <- IO.pure(mapToOBPTransaction(response))
-      
+
       // 4. Return success
       result = CBSResponse.success(transaction, callContext)
-      
+
     } yield result
   }
-  
+
   // Helper methods specific to YOUR bank
   private def validatePayment(data: PaymentData): IO[Unit] = ???
   private def mapToMyBankFormat(data: PaymentData): MyBankPaymentRequest = ???
@@ -386,8 +390,8 @@ git clone https://github.com/YourBank/OBP-Rabbit-Cats-Adapter.git
 # Your repository
 cat > .env <<EOF
 RABBITMQ_HOST=localhost
-CBS_BASE_URL=http://localhost:8080/mock-cbs
-CBS_AUTH_TYPE=none
+MYBANK_CBS_URL=http://localhost:8080/mock-cbs
+MYBANK_CBS_API_KEY=your-key-here
 TELEMETRY_TYPE=console
 EOF
 
@@ -407,40 +411,40 @@ spec:
   template:
     spec:
       containers:
-      - name: connector
-        image: mybank-obp-connector:1.0.0
-        env:
-        - name: RABBITMQ_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: obp-config
-              key: rabbitmq.host
-        - name: CBS_BEARER_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: mybank-cbs-credentials
-              key: api-token
+        - name: connector
+          image: mybank-obp-connector:1.0.0
+          env:
+            - name: RABBITMQ_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: obp-config
+                  key: rabbitmq.host
+            - name: MYBANK_CBS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mybank-cbs-credentials
+                  key: api-key
 ```
 
 ---
 
 ## Benefits of This Approach
 
-### For Your Bank 🏦
+### For Your Bank
 
-✅ **Clean separation** - Your code in your repo, generic code in its repo  
-✅ **Easy updates** - Update adapter version in one line  
-✅ **No merge conflicts** - Your code never conflicts with adapter updates  
-✅ **Secure** - Your credentials stay in your private repo  
-✅ **Testable** - Test your connector independently  
-✅ **Maintainable** - Clear boundary between generic and bank-specific code  
+- Clean separation - Your code in your repo, generic code in its repo
+- Easy updates - Update adapter version in one line
+- No merge conflicts - Your code never conflicts with adapter updates
+- Secure - Your credentials stay in your private repo
+- Testable - Test your connector independently
+- Maintainable - Clear boundary between generic and bank-specific code
 
-### For OBP Project 🌐
+### For OBP Project
 
-✅ **Clean contributions** - Banks can contribute generic improvements  
-✅ **Reusable core** - One adapter, many banks  
-✅ **Version management** - Banks can stay on stable versions  
-✅ **Quality** - Generic code is well-tested once  
+- Clean contributions - Banks can contribute generic improvements
+- Reusable core - One adapter, many banks
+- Version management - Banks can stay on stable versions
+- Quality - Generic code is well-tested once
 
 ---
 
@@ -459,7 +463,7 @@ cat > pom.xml <<EOF
   <groupId>com.mybank</groupId>
   <artifactId>mybank-obp-connector</artifactId>
   <version>1.0.0</version>
-  
+
   <dependencies>
     <dependency>
       <groupId>com.tesobe</groupId>
@@ -485,12 +489,12 @@ import cats.effect.IO
 class MyBankConnector extends CBSConnector {
   override def name = "MyBank-Connector"
   override def version = "1.0.0"
-  
+
   override def getBank(bankId: String, ctx: CallContext) = {
     // TODO: Implement
     IO.pure(CBSResponse.error("NOT_IMPLEMENTED", "TODO", ctx))
   }
-  
+
   // Implement other methods...
 }
 EOF
@@ -507,13 +511,13 @@ java -jar target/mybank-obp-connector.jar
 
 ## Summary
 
-| Approach | Use Case | Pros | Cons |
-|----------|----------|------|------|
-| **Maven Dependency** | Production | Clean, easy updates | Need Maven repo |
-| **Docker Base Image** | Production | Containerized, isolated | Need Docker registry |
-| **Git Submodule** | Active development | Flexible, can modify adapter | More complex |
+| Approach              | Use Case           | Pros                         | Cons                 |
+| --------------------- | ------------------ | ---------------------------- | -------------------- |
+| **Maven Dependency**  | Production         | Clean, easy updates          | Need Maven repo      |
+| **Docker Base Image** | Production         | Containerized, isolated      | Need Docker registry |
+| **Git Submodule**     | Active development | Flexible, can modify adapter | More complex         |
 
-**Recommended: Maven Dependency or Docker Base Image**
+Recommended: Maven Dependency or Docker Base Image
 
 Your bank-specific code lives in **your repository**.  
 The generic adapter is a **dependency**.  
