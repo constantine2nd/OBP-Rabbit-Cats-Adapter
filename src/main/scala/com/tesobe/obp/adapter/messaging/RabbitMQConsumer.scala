@@ -191,7 +191,7 @@ object RabbitMQConsumer {
   private def handleGetAdapterInfo(
       localAdapter: LocalAdapter,
       callContext: CallContext
-  ): IO[com.tesobe.obp.adapter.interfaces.AdapterResponse] = {
+  ): IO[com.tesobe.obp.adapter.interfaces.LocalAdapterResult] = {
     import io.circe.Json
     import io.circe.JsonObject
     import scala.sys.process._
@@ -204,7 +204,7 @@ object RabbitMQConsumer {
       }
 
     IO.pure(
-      com.tesobe.obp.adapter.interfaces.AdapterResponse.success(
+      com.tesobe.obp.adapter.interfaces.LocalAdapterResult.success(
         JsonObject(
           "name" -> Json.fromString("OBP-Rabbit-Cats-Adapter"),
           "version" -> Json.fromString("1.0.0-SNAPSHOT"),
@@ -233,12 +233,12 @@ object RabbitMQConsumer {
     */
   private def buildInboundMessage(
       outboundMsg: OutboundMessage,
-      adapterResponse: com.tesobe.obp.adapter.interfaces.AdapterResponse
+      adapterResponse: com.tesobe.obp.adapter.interfaces.LocalAdapterResult
   ): IO[InboundMessage] = {
     val ctx = outboundMsg.outboundAdapterCallContext
 
     adapterResponse match {
-      case com.tesobe.obp.adapter.interfaces.AdapterResponse
+      case com.tesobe.obp.adapter.interfaces.LocalAdapterResult
             .Success(data, messages) =>
         IO.pure(
           InboundMessage.success(
@@ -249,7 +249,7 @@ object RabbitMQConsumer {
           )
         )
 
-      case com.tesobe.obp.adapter.interfaces.AdapterResponse
+      case com.tesobe.obp.adapter.interfaces.LocalAdapterResult
             .Error(code, message, messages) =>
         IO.pure(
           InboundMessage.error(

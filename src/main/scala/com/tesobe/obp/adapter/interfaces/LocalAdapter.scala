@@ -35,9 +35,9 @@ import io.circe.JsonObject
  * - Input: JSON data field from OBP outbound message
  * - Output: JSON data field for OBP inbound response
  *
- * All methods return IO[AdapterResponse] where:
+ * All methods return IO[LocalAdapterResult] where:
  * - The outer IO represents the effect/computation
- * - AdapterResponse wraps either success data (JSON) or error information
+ * - LocalAdapterResult wraps either success data (JSON) or error information
  *
  * Implementations should handle:
  * - Network failures
@@ -69,26 +69,26 @@ trait LocalAdapter {
     process: String,
     data: JsonObject,
     callContext: CallContext
-  ): IO[AdapterResponse]
+  ): IO[LocalAdapterResult]
 
   /**
    * Check if the CBS connection is healthy
    */
-  def checkHealth(callContext: CallContext): IO[AdapterResponse]
+  def checkHealth(callContext: CallContext): IO[LocalAdapterResult]
 
   /**
    * Get adapter information
    */
-  def getAdapterInfo(callContext: CallContext): IO[AdapterResponse]
+  def getAdapterInfo(callContext: CallContext): IO[LocalAdapterResult]
 }
 
 /**
  * Response from adapter operations.
  * Provides consistent error handling across all adapter implementations.
  */
-sealed trait AdapterResponse
+sealed trait LocalAdapterResult
 
-object AdapterResponse {
+object LocalAdapterResult {
 
   /**
    * Successful response with JSON data matching OBP message docs format
@@ -96,7 +96,7 @@ object AdapterResponse {
   final case class Success(
     data: JsonObject,
     backendMessages: List[BackendMessage] = Nil
-  ) extends AdapterResponse
+  ) extends LocalAdapterResult
 
   /**
    * Error response with details
@@ -105,12 +105,12 @@ object AdapterResponse {
     errorCode: String,
     errorMessage: String,
     backendMessages: List[BackendMessage] = Nil
-  ) extends AdapterResponse
+  ) extends LocalAdapterResult
 
   /** Convenience constructors */
-  def success(data: JsonObject, messages: List[BackendMessage] = Nil): AdapterResponse =
+  def success(data: JsonObject, messages: List[BackendMessage] = Nil): LocalAdapterResult =
     Success(data, messages)
 
-  def error(code: String, message: String, messages: List[BackendMessage] = Nil): AdapterResponse =
+  def error(code: String, message: String, messages: List[BackendMessage] = Nil): LocalAdapterResult =
     Error(code, message, messages)
 }

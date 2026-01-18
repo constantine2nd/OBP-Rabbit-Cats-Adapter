@@ -114,13 +114,13 @@ class YourBankAdapter(
   override def name: String = "YourBank-Adapter"
   override def version: String = "1.0.0"
 
-  override def getBank(bankId: String, callContext: CallContext): IO[AdapterResponse[BankCommons]] = {
+  override def getBank(bankId: String, callContext: CallContext): IO[LocalAdapterResult[BankCommons]] = {
     // Your implementation here
     // Call your CBS API, map response to BankCommons
     ???
   }
 
-  override def getBankAccount(...): IO[AdapterResponse[BankAccountCommons]] = {
+  override def getBankAccount(...): IO[LocalAdapterResult[BankAccountCommons]] = {
     // Your implementation
     ???
   }
@@ -217,28 +217,28 @@ Your local adapter must implement these key operations:
 ```scala
 trait LocalAdapter {
   // Bank Operations
-  def getBank(bankId: String, ...): IO[AdapterResponse[BankCommons]]
-  def getBanks(...): IO[AdapterResponse[List[BankCommons]]]
+  def getBank(bankId: String, ...): IO[LocalAdapterResult[BankCommons]]
+  def getBanks(...): IO[LocalAdapterResult[List[BankCommons]]]
 
   // Account Operations
-  def getBankAccount(bankId: String, accountId: String, ...): IO[AdapterResponse[BankAccountCommons]]
-  def getBankAccounts(...): IO[AdapterResponse[List[BankAccountCommons]]]
-  def createBankAccount(...): IO[AdapterResponse[BankAccountCommons]]
+  def getBankAccount(bankId: String, accountId: String, ...): IO[LocalAdapterResult[BankAccountCommons]]
+  def getBankAccounts(...): IO[LocalAdapterResult[List[BankAccountCommons]]]
+  def createBankAccount(...): IO[LocalAdapterResult[BankAccountCommons]]
 
   // Transaction Operations
-  def getTransaction(...): IO[AdapterResponse[TransactionCommons]]
-  def getTransactions(...): IO[AdapterResponse[List[TransactionCommons]]]
-  def makePayment(...): IO[AdapterResponse[TransactionCommons]]
+  def getTransaction(...): IO[LocalAdapterResult[TransactionCommons]]
+  def getTransactions(...): IO[LocalAdapterResult[List[TransactionCommons]]]
+  def makePayment(...): IO[LocalAdapterResult[TransactionCommons]]
 
   // Customer Operations
-  def getCustomer(...): IO[AdapterResponse[CustomerCommons]]
-  def createCustomer(...): IO[AdapterResponse[CustomerCommons]]
+  def getCustomer(...): IO[LocalAdapterResult[CustomerCommons]]
+  def createCustomer(...): IO[LocalAdapterResult[CustomerCommons]]
 
   // ... and more (see interfaces/LocalAdapter.scala)
 }
 ```
 
-Note: You don't need to implement all operations at once. Start with the operations your bank needs, return `AdapterResponse.Error` for unimplemented ones.
+Note: You don't need to implement all operations at once. Start with the operations your bank needs, return `LocalAdapterResult.Error` for unimplemented ones.
 
 ## Example: Mock Adapter
 
@@ -246,8 +246,8 @@ A mock adapter is provided for testing:
 
 ```scala
 class MockLocalAdapter extends LocalAdapter {
-  override def getBank(bankId: String, callContext: CallContext): IO[AdapterResponse[BankCommons]] = {
-    IO.pure(AdapterResponse.success(
+  override def getBank(bankId: String, callContext: CallContext): IO[LocalAdapterResult[BankCommons]] = {
+    IO.pure(LocalAdapterResult.success(
       BankCommons(
         bankId = bankId,
         shortName = "Mock Bank",
@@ -377,9 +377,9 @@ class YourBankAdapterSpec extends CatsEffectSuite {
     val result = adapter.getBank("test-bank", CallContext("test-123"))
 
     result.map {
-      case AdapterResponse.Success(bank, _, _) =>
+      case LocalAdapterResult.Success(bank, _, _) =>
         assertEquals(bank.bankId, "test-bank")
-      case AdapterResponse.Error(code, msg, _, _) =>
+      case LocalAdapterResult.Error(code, msg, _, _) =>
         fail(s"Expected success, got error: $code - $msg")
     }
   }
@@ -411,16 +411,16 @@ The adapter provides consistent error handling:
 
 ```scala
 // In your local adapter
-def getBank(...): IO[AdapterResponse[BankCommons]] = {
+def getBank(...): IO[LocalAdapterResult[BankCommons]] = {
   httpClient.get(url)
-    .map(response => AdapterResponse.success(mapToBankCommons(response), callContext))
+    .map(response => LocalAdapterResult.success(mapToBankCommons(response), callContext))
     .handleErrorWith {
       case _: TimeoutException =>
-        IO.pure(AdapterResponse.error("CBS_TIMEOUT", "Request timed out", callContext))
+        IO.pure(LocalAdapterResult.error("CBS_TIMEOUT", "Request timed out", callContext))
       case _: NotFoundException =>
-        IO.pure(AdapterResponse.error("BANK_NOT_FOUND", "Bank does not exist", callContext))
+        IO.pure(LocalAdapterResult.error("BANK_NOT_FOUND", "Bank does not exist", callContext))
       case e: Exception =>
-        IO.pure(AdapterResponse.error("CBS_ERROR", e.getMessage, callContext))
+        IO.pure(LocalAdapterResult.error("CBS_ERROR", e.getMessage, callContext))
     }
 }
 ```
@@ -521,7 +521,7 @@ spec:
 
 **Q: Do I need to implement all 30+ methods in LocalAdapter?**
 
-A: No. Start with the operations you need. Return `AdapterResponse.Error("NOT_IMPLEMENTED", ...)` for others.
+A: No. Start with the operations you need. Return `LocalAdapterResult.Error("NOT_IMPLEMENTED", ...)` for others.
 
 **Q: Can I use SOAP instead of REST?**
 

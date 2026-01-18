@@ -82,9 +82,9 @@ object BankHandlers {
       
       // Build OBP response
       response <- result match {
-        case AdapterResponse.Success(bank, ctx, messages) =>
+        case LocalAdapterResult.Success(bank, ctx, messages) =>
           IO.pure(InboundMessage.success(bank, ctx, messages))
-        case AdapterResponse.Error(code, msg, ctx, messages) =>
+        case LocalAdapterResult.Error(code, msg, ctx, messages) =>
           IO.pure(InboundMessage.error(code, msg, ctx, messages))
       }
       
@@ -136,7 +136,7 @@ class YourBankAdapter(
   override def getBank(
     bankId: String,
     callContext: CallContext
-  ): IO[AdapterResponse[BankCommons]] = {
+  ): IO[LocalAdapterResult[BankCommons]] = {
     
     // 1. Call YOUR CBS API (your protocol, your auth, your format)
     httpClient.get(
@@ -160,17 +160,17 @@ class YourBankAdapter(
       )
       
       // 4. Return OBP response
-      IO.pure(AdapterResponse.success(obpBank, callContext))
+      IO.pure(LocalAdapterResult.success(obpBank, callContext))
       
     }.handleErrorWith { error =>
       // 5. Handle YOUR error codes
       error match {
         case YourBankNotFoundException(_) =>
-          IO.pure(AdapterResponse.error("BANK_NOT_FOUND", "Bank does not exist", callContext))
+          IO.pure(LocalAdapterResult.error("BANK_NOT_FOUND", "Bank does not exist", callContext))
         case YourBankAuthException(_) =>
-          IO.pure(AdapterResponse.error("CBS_AUTH_FAILED", "Authentication failed", callContext))
+          IO.pure(LocalAdapterResult.error("CBS_AUTH_FAILED", "Authentication failed", callContext))
         case _ =>
-          IO.pure(AdapterResponse.error("CBS_ERROR", error.getMessage, callContext))
+          IO.pure(LocalAdapterResult.error("CBS_ERROR", error.getMessage, callContext))
       }
     }
   }
@@ -210,7 +210,7 @@ src/main/scala/com/tesobe/obp/adapter/
 
 ```scala
 // In YourBankAdapter
-override def makePayment(...): IO[AdapterResponse[TransactionCommons]] = {
+override def makePayment(...): IO[LocalAdapterResult[TransactionCommons]] = {
   for {
     // Start span
     spanId <- telemetry.startSpan("makePayment", callContext.correlationId)
@@ -223,9 +223,9 @@ override def makePayment(...): IO[AdapterResponse[TransactionCommons]] = {
     
     // Record metrics
     _ <- result match {
-      case AdapterResponse.Success(tx, _, _) =>
+      case LocalAdapterResult.Success(tx, _, _) =>
         telemetry.recordPaymentSuccess(bankId, tx.amount, tx.currency, callContext.correlationId)
-      case AdapterResponse.Error(code, msg, _, _) =>
+      case LocalAdapterResult.Error(code, msg, _, _) =>
         telemetry.recordPaymentFailure(bankId, amount, currency, code, callContext.correlationId)
     }
     
@@ -335,7 +335,7 @@ class YourBankAdapter extends LocalAdapter {
   
   // Everything else - return error
   def makePayment(...) = IO.pure(
-    AdapterResponse.error("NOT_IMPLEMENTED", "Payment not supported yet", ctx)
+    LocalAdapterResult.error("NOT_IMPLEMENTED", "Payment not supported yet", ctx)
   )
 }
 ```
@@ -415,7 +415,7 @@ override def getAccountBalance(
   bankId: String,
   accountId: String,
   callContext: CallContext
-): IO[AdapterResponse[AccountBalance]] = {
+): IO[LocalAdapterResult[AccountBalance]] = {
   
   // Call YOUR CBS API
   httpClient.get(s"$baseUrl/accounts/$accountId/balance")
@@ -423,7 +423,7 @@ override def getAccountBalance(
       val balance = parseYourJson(response)
       
       // Map to OBP format
-      AdapterResponse.success(
+      LocalAdapterResult.success(
         AccountBalance(
           currency = balance.currency,
           amount = balance.available_balance

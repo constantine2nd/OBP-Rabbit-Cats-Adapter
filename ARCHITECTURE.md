@@ -54,7 +54,7 @@ This adapter bridges the Open Bank Project (OBP) API and Core Banking Systems (C
 │                  (contracts/)                               │
 ├─────────────────────────────────────────────────────────────┤
 │  trait LocalAdapter {                                       │
-│    def getBank(...): IO[AdapterResponse[BankCommons]]          │
+│    def getBank(...): IO[LocalAdapterResult[BankCommons]]          │
 │    def getBankAccount(...): IO[...]                        │
 │    def makePayment(...): IO[...]                           │
 │    // ... all CBS operations                               │
@@ -158,17 +158,17 @@ trait LocalAdapter {
   def version: String
 
   // Core operations
-  def getBank(bankId: String, callContext: CallContext): IO[AdapterResponse[BankCommons]]
-  def getBankAccount(...): IO[AdapterResponse[BankAccountCommons]]
-  def makePayment(...): IO[AdapterResponse[TransactionCommons]]
+  def getBank(bankId: String, callContext: CallContext): IO[LocalAdapterResult[BankCommons]]
+  def getBankAccount(...): IO[LocalAdapterResult[BankAccountCommons]]
+  def makePayment(...): IO[LocalAdapterResult[TransactionCommons]]
   // ... 30+ operations covering OBP functionality
 }
 ```
 
 **Key Points**:
 
-- All methods return `IO[AdapterResponse[T]]` for pure functional effects
-- `AdapterResponse` is a sealed trait with `Success` and `Error` cases
+- All methods return `IO[LocalAdapterResult[T]]` for pure functional effects
+- `LocalAdapterResult` is a sealed trait with `Success` and `Error` cases
 - `CallContext` contains correlation ID, user info, auth context
 - Bank-specific logic stays in your implementation
 
@@ -226,7 +226,7 @@ Handler calls LocalAdapter.getBank()
     ↓
 LocalAdapter implementation makes CBS call
     ↓
-Response wrapped in AdapterResponse
+Response wrapped in LocalAdapterResult
     ↓
 Handler builds InboundAdapterCallContext
     ↓
@@ -240,7 +240,7 @@ Telemetry.recordMessageProcessed()
 ```
 If CBS call fails:
     ↓
-AdapterResponse.Error returned
+LocalAdapterResult.Error returned
     ↓
 Telemetry.recordCBSOperationFailure()
     ↓
@@ -271,7 +271,7 @@ class MyBankAdapter(
   override def name: String = "MyBank-REST-Adapter"
   override def version: String = "1.0.0"
 
-  override def getBank(bankId: String, callContext: CallContext): IO[AdapterResponse[BankCommons]] = {
+  override def getBank(bankId: String, callContext: CallContext): IO[LocalAdapterResult[BankCommons]] = {
     for {
       // Start telemetry
       _ <- telemetry.recordCBSOperationStart("getBank", callContext.correlationId)
@@ -280,7 +280,7 @@ class MyBankAdapter(
       result <- httpClient.get(s"$baseUrl/banks/$bankId")
         .map(response =>
           // Map CBS response to OBP BankCommons
-          AdapterResponse.success(
+          LocalAdapterResult.success(
             BankCommons(
               bankId = response.id,
               shortName = response.name,
@@ -291,7 +291,7 @@ class MyBankAdapter(
           )
         )
         .handleErrorWith(error =>
-          IO.pure(AdapterResponse.error(
+          IO.pure(LocalAdapterResult.error(
             "BANK_NOT_FOUND",
             error.getMessage,
             callContext
@@ -364,7 +364,7 @@ class MyBankAdapterSpec extends CatsEffectSuite {
     val result = adapter.getBank("bank-id", CallContext("corr-123"))
 
     result.map {
-      case AdapterResponse.Success(bank, _, _) =>
+      case LocalAdapterResult.Success(bank, _, _) =>
         assertEquals(bank.bankId, "bank-id")
       case _ => fail("Expected success")
     }
@@ -390,7 +390,7 @@ Use `MockLocalAdapter` for development without real CBS:
 ```scala
 class MockLocalAdapter extends LocalAdapter {
   def getBank(...) = IO.pure(
-    AdapterResponse.success(
+    LocalAdapterResult.success(
       BankCommons(
         bankId = "mock-bank",
         shortName = "Mock",

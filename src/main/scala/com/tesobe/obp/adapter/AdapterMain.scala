@@ -77,9 +77,9 @@ object AdapterMain extends IOApp {
         )
       )
       _ <- healthResult match {
-        case com.tesobe.obp.adapter.interfaces.AdapterResponse.Success(data, _) =>
+        case com.tesobe.obp.adapter.interfaces.LocalAdapterResult.Success(data, _) =>
           IO.println("[OK] CBS is healthy")
-        case com.tesobe.obp.adapter.interfaces.AdapterResponse
+        case com.tesobe.obp.adapter.interfaces.LocalAdapterResult
               .Error(code, msg, _) =>
           IO.println(s"[WARNING] CBS health check failed: $code - $msg")
       }

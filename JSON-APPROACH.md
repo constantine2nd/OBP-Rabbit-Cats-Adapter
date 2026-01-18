@@ -44,7 +44,7 @@ Instead, we work directly with JSON:
 │    messageType: String,     ← "obp.getBank"                │
 │    data: JsonObject,        ← {"bankId": "gh.29.uk"}       │
 │    callContext: CallContext                                 │
-│  ): IO[AdapterResponse]                                         │
+│  ): IO[LocalAdapterResult]                                         │
 │                                                             │
 │  You extract what you need, call your CBS,                 │
 │  return JSON matching message docs format                  │
@@ -113,17 +113,17 @@ trait LocalAdapter {
     messageType: String,
     data: JsonObject,
     callContext: CallContext
-  ): IO[AdapterResponse]
+  ): IO[LocalAdapterResult]
   
   // Health checks
-  def checkHealth(callContext: CallContext): IO[AdapterResponse]
-  def getAdapterInfo(callContext: CallContext): IO[AdapterResponse]
+  def checkHealth(callContext: CallContext): IO[LocalAdapterResult]
+  def getAdapterInfo(callContext: CallContext): IO[LocalAdapterResult]
 }
 
 // Response is either Success with JSON or Error
-sealed trait AdapterResponse
-case class Success(data: JsonObject, backendMessages: List[BackendMessage]) extends AdapterResponse
-case class Error(errorCode: String, errorMessage: String, backendMessages: List[BackendMessage]) extends AdapterResponse
+sealed trait LocalAdapterResult
+case class Success(data: JsonObject, backendMessages: List[BackendMessage]) extends LocalAdapterResult
+case class Error(errorCode: String, errorMessage: String, backendMessages: List[BackendMessage]) extends LocalAdapterResult
 ```
 
 ---
@@ -153,12 +153,12 @@ def handleMessage(
   messageType: String,      // "obp.getBank"
   data: JsonObject,          // {"bankId": "gh.29.uk"}
   callContext: CallContext
-): IO[AdapterResponse] = {
+): IO[LocalAdapterResult] = {
   
   messageType match {
     case "obp.getBank" => getBank(data, callContext)
     case "obp.getBankAccount" => getBankAccount(data, callContext)
-    case _ => IO.pure(AdapterResponse.error("NOT_IMPLEMENTED", s"Unknown: $messageType"))
+    case _ => IO.pure(LocalAdapterResult.error("NOT_IMPLEMENTED", s"Unknown: $messageType"))
   }
 }
 ```
@@ -166,7 +166,7 @@ def handleMessage(
 ### Step 3: You extract fields and call YOUR CBS
 
 ```scala
-private def getBank(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
+private def getBank(data: JsonObject, callContext: CallContext): IO[LocalAdapterResult] = {
   // 1. Extract what you need from JSON
   val bankId = data("bankId").flatMap(_.asString).getOrElse("unknown")
   
@@ -183,11 +183,11 @@ private def getBank(data: JsonObject, callContext: CallContext): IO[AdapterRespo
       )
       
       // 4. Return success with JSON
-      AdapterResponse.success(obpResponseData)
+      LocalAdapterResult.success(obpResponseData)
     }
     .handleErrorWith { error =>
       // 5. Handle errors
-      IO.pure(AdapterResponse.error("BANK_NOT_FOUND", error.getMessage))
+      IO.pure(LocalAdapterResult.error("BANK_NOT_FOUND", error.getMessage))
     }
 }
 ```
@@ -287,7 +287,7 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     messageType: String,
     data: JsonObject,
     callContext: CallContext
-  ): IO[AdapterResponse] = {
+  ): IO[LocalAdapterResult] = {
     messageType match {
       case "obp.getBank" => getBank(data, callContext)
       case "obp.getBankAccount" => getBankAccount(data, callContext)
@@ -295,10 +295,10 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     }
   }
   
-  private def getBank(data: JsonObject, ctx: CallContext): IO[AdapterResponse] = {
+  private def getBank(data: JsonObject, ctx: CallContext): IO[LocalAdapterResult] = {
     val bankId = data("bankId").flatMap(_.asString).getOrElse("unknown")
     
-    IO.pure(AdapterResponse.success(
+    IO.pure(LocalAdapterResult.success(
       JsonObject(
         "bankId" -> Json.fromString(bankId),
         "shortName" -> Json.fromString("Mock Bank"),
@@ -365,8 +365,8 @@ case class CustomerCommons(...)
 // ... 50+ more models
 
 trait LocalAdapter {
-  def getBank(...): IO[AdapterResponse[BankCommons]]
-  def getBankAccount(...): IO[AdapterResponse[AccountCommons]]
+  def getBank(...): IO[LocalAdapterResult[BankCommons]]
+  def getBankAccount(...): IO[LocalAdapterResult[AccountCommons]]
   // ... 50+ methods
 }
 
@@ -388,7 +388,7 @@ case class OutboundMessage(messageType: String, data: JsonObject, ...)
 case class InboundMessage(data: Option[JsonObject], ...)
 
 trait LocalAdapter {
-  def handleMessage(messageType: String, data: JsonObject, ...): IO[AdapterResponse]
+  def handleMessage(messageType: String, data: JsonObject, ...): IO[LocalAdapterResult]
 }
 
 // Work directly with JSON from message docs

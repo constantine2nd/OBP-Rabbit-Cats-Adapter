@@ -95,7 +95,7 @@ class MyBankAdapter(
   override def getBank(
     bankId: String,
     callContext: CallContext
-  ): IO[AdapterResponse[BankCommons]] = {
+  ): IO[LocalAdapterResult[BankCommons]] = {
     // YOUR code to call YOUR CBS
     ???
   }
@@ -310,7 +310,7 @@ class MyBankAdapter(...) extends LocalAdapter {
     accountId: String,
     paymentData: PaymentData,
     callContext: CallContext
-  ): IO[AdapterResponse[TransactionCommons]] = {
+  ): IO[LocalAdapterResult[TransactionCommons]] = {
 
     for {
       // 1. Validate with YOUR business rules
@@ -327,7 +327,7 @@ class MyBankAdapter(...) extends LocalAdapter {
       transaction <- IO.pure(mapToOBPTransaction(response))
 
       // 4. Return success
-      result = AdapterResponse.success(transaction, callContext)
+      result = LocalAdapterResult.success(transaction, callContext)
 
     } yield result
   }
@@ -492,7 +492,7 @@ class MyBankAdapter extends LocalAdapter {
 
   override def getBank(bankId: String, ctx: CallContext) = {
     // TODO: Implement
-    IO.pure(AdapterResponse.error("NOT_IMPLEMENTED", "TODO", ctx))
+    IO.pure(LocalAdapterResult.error("NOT_IMPLEMENTED", "TODO", ctx))
   }
 
   // Implement other methods...

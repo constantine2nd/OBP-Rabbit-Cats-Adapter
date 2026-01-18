@@ -43,7 +43,7 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     process: String,
     data: JsonObject,
     callContext: CallContext
-  ): IO[AdapterResponse] = {
+  ): IO[LocalAdapterResult] = {
 
     process match {
       case "obp.getAdapterInfo" => getAdapterInfo(callContext)
@@ -57,9 +57,9 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     }
   }
 
-  override def checkHealth(callContext: CallContext): IO[AdapterResponse] = {
+  override def checkHealth(callContext: CallContext): IO[LocalAdapterResult] = {
     IO.pure(
-      AdapterResponse.success(
+      LocalAdapterResult.success(
         JsonObject(
           "status" -> Json.fromString("healthy"),
           "message" -> Json.fromString("Mock CBS is operational"),
@@ -69,9 +69,9 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     )
   }
 
-  override def getAdapterInfo(callContext: CallContext): IO[AdapterResponse] = {
+  override def getAdapterInfo(callContext: CallContext): IO[LocalAdapterResult] = {
     IO.pure(
-      AdapterResponse.success(
+      LocalAdapterResult.success(
         JsonObject(
           "name" -> Json.fromString("OBP-Rabbit-Cats-Adapter"),
           "version" -> Json.fromString("1.0.0-SNAPSHOT"),
@@ -92,13 +92,13 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
 
   // ==================== EXAMPLE IMPLEMENTATIONS ====================
 
-  private def getBank(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
+  private def getBank(data: JsonObject, callContext: CallContext): IO[LocalAdapterResult] = {
     // Extract bankId from the data payload
     val bankId = data("bankId").flatMap(_.asString).getOrElse("unknown")
 
     telemetry.debug(s"Getting bank: $bankId", Some(callContext.correlationId)) *>
     IO.pure(
-      AdapterResponse.success(
+      LocalAdapterResult.success(
         JsonObject(
           "bankId" -> Json.fromString(bankId),
           "shortName" -> Json.fromString("Mock Bank"),
@@ -110,13 +110,13 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     )
   }
 
-  private def getBankAccount(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
+  private def getBankAccount(data: JsonObject, callContext: CallContext): IO[LocalAdapterResult] = {
     val bankId = data("bankId").flatMap(_.asString).getOrElse("unknown")
     val accountId = data("accountId").flatMap(_.asString).getOrElse("unknown")
 
     telemetry.debug(s"Getting account: $accountId at bank: $bankId", Some(callContext.correlationId)) *>
     IO.pure(
-      AdapterResponse.success(
+      LocalAdapterResult.success(
         JsonObject(
           "bankId" -> Json.fromString(bankId),
           "accountId" -> Json.fromString(accountId),
@@ -139,12 +139,12 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     )
   }
 
-  private def getTransaction(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
+  private def getTransaction(data: JsonObject, callContext: CallContext): IO[LocalAdapterResult] = {
     val transactionId = data("transactionId").flatMap(_.asString).getOrElse("unknown")
 
     telemetry.debug(s"Getting transaction: $transactionId", Some(callContext.correlationId)) *>
     IO.pure(
-      AdapterResponse.success(
+      LocalAdapterResult.success(
         JsonObject(
           "transactionId" -> Json.fromString(transactionId),
           "accountId" -> data("accountId").getOrElse(Json.fromString("account-123")),
@@ -160,12 +160,12 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     )
   }
 
-  private def getTransactions(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
+  private def getTransactions(data: JsonObject, callContext: CallContext): IO[LocalAdapterResult] = {
     val accountId = data("accountId").flatMap(_.asString).getOrElse("unknown")
 
     telemetry.debug(s"Getting transactions for account: $accountId", Some(callContext.correlationId)) *>
     IO.pure(
-      AdapterResponse.success(
+      LocalAdapterResult.success(
         JsonObject(
           "transactions" -> Json.arr(
             Json.obj(
@@ -192,13 +192,13 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     )
   }
 
-  private def checkFundsAvailable(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
+  private def checkFundsAvailable(data: JsonObject, callContext: CallContext): IO[LocalAdapterResult] = {
     val amount = data("amount").flatMap(_.asString).getOrElse("0")
     val currency = data("currency").flatMap(_.asString).getOrElse("EUR")
 
     telemetry.debug(s"Checking funds: $amount $currency", Some(callContext.correlationId)) *>
     IO.pure(
-      AdapterResponse.success(
+      LocalAdapterResult.success(
         JsonObject(
           "available" -> Json.fromBoolean(true),
           "amount" -> Json.fromString(amount),
@@ -208,7 +208,7 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     )
   }
 
-  private def makePayment(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
+  private def makePayment(data: JsonObject, callContext: CallContext): IO[LocalAdapterResult] = {
     val amount = data("amount").flatMap(_.asString).getOrElse("0")
     val currency = data("currency").flatMap(_.asString).getOrElse("EUR")
     val description = data("description").flatMap(_.asString).getOrElse("Payment")
@@ -220,7 +220,7 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
       correlationId = callContext.correlationId
     ) *>
     IO.pure(
-      AdapterResponse.success(
+      LocalAdapterResult.success(
         JsonObject(
           "transactionId" -> Json.fromString(s"tx-${System.currentTimeMillis()}"),
           "amount" -> Json.fromString(amount),
@@ -242,10 +242,10 @@ class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
     )
   }
 
-  private def handleUnsupported(process: String, callContext: CallContext): IO[AdapterResponse] = {
+  private def handleUnsupported(process: String, callContext: CallContext): IO[LocalAdapterResult] = {
     telemetry.warn(s"Unsupported message type: $process", Some(callContext.correlationId)) *>
     IO.pure(
-      AdapterResponse.error(
+      LocalAdapterResult.error(
         code = "OBP-50000",
         message = s"Message type not implemented: $process",
         messages = List(
