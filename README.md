@@ -34,7 +34,7 @@ This adapter cleanly separates three concerns:
 
 ### 2. **South Side** (Bank-Specific, Pluggable)
 
-- CBS connector implementations
+- Local adapter implementations
 - Your bank's API integration
 - Data mapping between CBS and OBP models
 
@@ -54,7 +54,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 - ✅ The correct way to use this adapter (as a dependency)
 - ❌ The wrong way (cloning and modifying)
 - 📦 Maven dependency vs Docker base image vs Git submodule
-- 🏗️ Setting up your own connector project
+- 🏗️ Setting up your own adapter project
 - 🔄 How to get updates without merge conflicts
 
 ## Quick Start
@@ -94,9 +94,9 @@ mvn clean package
 
 This creates `target/obp-rabbit-cats-adapter.jar`
 
-### 2. Implement Your CBS Connector
+### 2. Implement Your Local Adapter
 
-Create a new class implementing `CBSConnector`:
+Create a new class implementing `LocalAdapter`:
 
 ```scala
 package com.tesobe.obp.adapter.cbs.implementations
@@ -105,28 +105,28 @@ import com.tesobe.obp.adapter.interfaces._
 import com.tesobe.obp.adapter.models._
 import cats.effect.IO
 
-class YourBankConnector(
+class YourBankAdapter(
   baseUrl: String,
   apiKey: String,
   telemetry: Telemetry
-) extends CBSConnector {
+) extends LocalAdapter {
 
-  override def name: String = "YourBank-Connector"
+  override def name: String = "YourBank-Adapter"
   override def version: String = "1.0.0"
 
-  override def getBank(bankId: String, callContext: CallContext): IO[CBSResponse[BankCommons]] = {
+  override def getBank(bankId: String, callContext: CallContext): IO[AdapterResponse[BankCommons]] = {
     // Your implementation here
     // Call your CBS API, map response to BankCommons
     ???
   }
 
-  override def getBankAccount(...): IO[CBSResponse[BankAccountCommons]] = {
+  override def getBankAccount(...): IO[AdapterResponse[BankAccountCommons]] = {
     // Your implementation
     ???
   }
 
   // Implement ~30 methods for full OBP functionality
-  // See interfaces/CBSConnector.scala for complete interface
+  // See interfaces/LocalAdapter.scala for complete interface
 }
 ```
 
@@ -149,7 +149,7 @@ RABBITMQ_REQUEST_QUEUE=obp.request
 RABBITMQ_RESPONSE_QUEUE=obp.response
 
 # Your CBS Configuration
-# (Your bank-specific CBS connector will define what config it needs)
+# (Your bank-specific local adapter will define what config it needs)
 
 # Telemetry
 TELEMETRY_TYPE=console
@@ -210,44 +210,44 @@ Response:
 }
 ```
 
-## CBS Connector Interface
+## Local Adapter Interface
 
-Your CBS connector must implement these key operations:
+Your local adapter must implement these key operations:
 
 ```scala
-trait CBSConnector {
+trait LocalAdapter {
   // Bank Operations
-  def getBank(bankId: String, ...): IO[CBSResponse[BankCommons]]
-  def getBanks(...): IO[CBSResponse[List[BankCommons]]]
+  def getBank(bankId: String, ...): IO[AdapterResponse[BankCommons]]
+  def getBanks(...): IO[AdapterResponse[List[BankCommons]]]
 
   // Account Operations
-  def getBankAccount(bankId: String, accountId: String, ...): IO[CBSResponse[BankAccountCommons]]
-  def getBankAccounts(...): IO[CBSResponse[List[BankAccountCommons]]]
-  def createBankAccount(...): IO[CBSResponse[BankAccountCommons]]
+  def getBankAccount(bankId: String, accountId: String, ...): IO[AdapterResponse[BankAccountCommons]]
+  def getBankAccounts(...): IO[AdapterResponse[List[BankAccountCommons]]]
+  def createBankAccount(...): IO[AdapterResponse[BankAccountCommons]]
 
   // Transaction Operations
-  def getTransaction(...): IO[CBSResponse[TransactionCommons]]
-  def getTransactions(...): IO[CBSResponse[List[TransactionCommons]]]
-  def makePayment(...): IO[CBSResponse[TransactionCommons]]
+  def getTransaction(...): IO[AdapterResponse[TransactionCommons]]
+  def getTransactions(...): IO[AdapterResponse[List[TransactionCommons]]]
+  def makePayment(...): IO[AdapterResponse[TransactionCommons]]
 
   // Customer Operations
-  def getCustomer(...): IO[CBSResponse[CustomerCommons]]
-  def createCustomer(...): IO[CBSResponse[CustomerCommons]]
+  def getCustomer(...): IO[AdapterResponse[CustomerCommons]]
+  def createCustomer(...): IO[AdapterResponse[CustomerCommons]]
 
-  // ... and more (see interfaces/CBSConnector.scala)
+  // ... and more (see interfaces/LocalAdapter.scala)
 }
 ```
 
-Note: You don't need to implement all operations at once. Start with the operations your bank needs, return `CBSResponse.Error` for unimplemented ones.
+Note: You don't need to implement all operations at once. Start with the operations your bank needs, return `AdapterResponse.Error` for unimplemented ones.
 
-## Example: Mock Connector
+## Example: Mock Adapter
 
-A mock connector is provided for testing:
+A mock adapter is provided for testing:
 
 ```scala
-class MockCBSConnector extends CBSConnector {
-  override def getBank(bankId: String, callContext: CallContext): IO[CBSResponse[BankCommons]] = {
-    IO.pure(CBSResponse.success(
+class MockLocalAdapter extends LocalAdapter {
+  override def getBank(bankId: String, callContext: CallContext): IO[AdapterResponse[BankCommons]] = {
+    IO.pure(AdapterResponse.success(
       BankCommons(
         bankId = bankId,
         shortName = "Mock Bank",
@@ -314,8 +314,8 @@ class YourTelemetry extends Telemetry {
 1. **OBP-API** sends message to RabbitMQ `obp.request` queue
 2. **Adapter** consumes message, extracts correlation ID
 3. **MessageRouter** routes to appropriate handler based on message type
-4. **Handler** calls your `CBSConnector` implementation
-5. **Your Connector** calls your CBS API
+4. **Handler** calls your `LocalAdapter` implementation
+5. **Your Adapter** calls your CBS API
 6. **Response** mapped to OBP format and sent to `obp.response` queue
 7. **OBP-API** receives response and returns to client
 
@@ -352,11 +352,11 @@ src/main/scala/com/tesobe/obp/adapter/
 │   ├── AccountHandlers.scala
 │   └── TransactionHandlers.scala
 ├── interfaces/                     # Core contracts
-│   └── CBSConnector.scala         ← YOU IMPLEMENT THIS
+│   └── LocalAdapter.scala         ← YOU IMPLEMENT THIS
 ├── cbs/implementations/            # CBS implementations
-│   ├── MockCBSConnector.scala     # For testing
-│   ├── RestCBSConnector.scala     # Generic REST
-│   └── YourBankConnector.scala    ← YOUR CODE HERE
+│   ├── MockLocalAdapter.scala     # For testing
+│   ├── RestLocalAdapter.scala     # Generic REST
+│   └── YourBankAdapter.scala      ← YOUR CODE HERE
 ├── telemetry/                      # Observability
 │   ├── Telemetry.scala
 │   ├── ConsoleTelemetry.scala
@@ -368,18 +368,18 @@ src/main/scala/com/tesobe/obp/adapter/
 
 ### Unit Tests
 
-Test your CBS connector in isolation:
+Test your local adapter in isolation:
 
 ```scala
-class YourBankConnectorSpec extends CatsEffectSuite {
+class YourBankAdapterSpec extends CatsEffectSuite {
   test("getBank returns bank data") {
-    val connector = new YourBankConnector(mockHttp, NoOpTelemetry)
-    val result = connector.getBank("test-bank", CallContext("test-123"))
+    val adapter = new YourBankAdapter(mockHttp, NoOpTelemetry)
+    val result = adapter.getBank("test-bank", CallContext("test-123"))
 
     result.map {
-      case CBSResponse.Success(bank, _, _) =>
+      case AdapterResponse.Success(bank, _, _) =>
         assertEquals(bank.bankId, "test-bank")
-      case CBSResponse.Error(code, msg, _, _) =>
+      case AdapterResponse.Error(code, msg, _, _) =>
         fail(s"Expected success, got error: $code - $msg")
     }
   }
@@ -388,7 +388,7 @@ class YourBankConnectorSpec extends CatsEffectSuite {
 
 ### Integration Tests
 
-Use `MockCBSConnector` to test message flow without real CBS.
+Use `MockLocalAdapter` to test message flow without real CBS.
 
 ### End-to-End Tests
 
@@ -398,8 +398,8 @@ Test with real RabbitMQ and mock CBS:
 # Start RabbitMQ
 docker-compose up -d rabbitmq
 
-# Run adapter with mock connector
-CBS_TYPE=mock java -jar target/obp-rabbit-cats-adapter.jar
+# Run adapter with mock adapter
+LOCAL_ADAPTER_TYPE=mock java -jar target/obp-rabbit-cats-adapter.jar
 
 # Send test message to obp.request queue
 # Verify response in obp.response queue
@@ -410,17 +410,17 @@ CBS_TYPE=mock java -jar target/obp-rabbit-cats-adapter.jar
 The adapter provides consistent error handling:
 
 ```scala
-// In your CBS connector
-def getBank(...): IO[CBSResponse[BankCommons]] = {
+// In your local adapter
+def getBank(...): IO[AdapterResponse[BankCommons]] = {
   httpClient.get(url)
-    .map(response => CBSResponse.success(mapToBankCommons(response), callContext))
+    .map(response => AdapterResponse.success(mapToBankCommons(response), callContext))
     .handleErrorWith {
       case _: TimeoutException =>
-        IO.pure(CBSResponse.error("CBS_TIMEOUT", "Request timed out", callContext))
+        IO.pure(AdapterResponse.error("CBS_TIMEOUT", "Request timed out", callContext))
       case _: NotFoundException =>
-        IO.pure(CBSResponse.error("BANK_NOT_FOUND", "Bank does not exist", callContext))
+        IO.pure(AdapterResponse.error("BANK_NOT_FOUND", "Bank does not exist", callContext))
       case e: Exception =>
-        IO.pure(CBSResponse.error("CBS_ERROR", e.getMessage, callContext))
+        IO.pure(AdapterResponse.error("CBS_ERROR", e.getMessage, callContext))
     }
 }
 ```
@@ -519,25 +519,25 @@ spec:
 
 ## FAQ
 
-**Q: Do I need to implement all 30+ methods in CBSConnector?**
+**Q: Do I need to implement all 30+ methods in LocalAdapter?**
 
-A: No. Start with the operations you need. Return `CBSResponse.Error("NOT_IMPLEMENTED", ...)` for others.
+A: No. Start with the operations you need. Return `AdapterResponse.Error("NOT_IMPLEMENTED", ...)` for others.
 
 **Q: Can I use SOAP instead of REST?**
 
-A: Yes. Implement `CBSConnector` to call SOAP endpoints. The interface is transport-agnostic.
+A: Yes. Implement `LocalAdapter` to call SOAP endpoints. The interface is transport-agnostic.
 
 **Q: How do I handle authentication to my CBS?**
 
-A: Handle it in your `CBSConnector` implementation. The adapter provides config for common auth types.
+A: Handle it in your `LocalAdapter` implementation. The adapter provides config for common auth types.
 
 **Q: Can I run multiple adapters for different banks?**
 
-A: Yes. Each adapter instance can have a different `CBSConnector` implementation.
+A: Yes. Each adapter instance can have a different `LocalAdapter` implementation.
 
 **Q: What if my CBS API doesn't map directly to OBP models?**
 
-A: That's expected. Your `CBSConnector` implementation does the mapping. This is bank-specific logic.
+A: That's expected. Your `LocalAdapter` implementation does the mapping. This is bank-specific logic.
 
 **Q: How do I debug message processing?**
 

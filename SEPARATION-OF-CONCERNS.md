@@ -66,7 +66,7 @@ object BankHandlers {
   
   def handleGetBank(
     message: GetBankMessage,
-    connector: CBSConnector,  // ← Your implementation injected
+    localAdapter: LocalAdapter,  // ← Your implementation injected
     telemetry: Telemetry
   ): IO[InboundMessage] = {
     for {
@@ -78,13 +78,13 @@ object BankHandlers {
       _ <- telemetry.recordMessageReceived("obp.getBank", callContext.correlationId, "obp.request")
       
       // Call YOUR CBS implementation
-      result <- connector.getBank(bankId, callContext)
+      result <- localAdapter.getBank(bankId, callContext)
       
       // Build OBP response
       response <- result match {
-        case CBSResponse.Success(bank, ctx, messages) =>
+        case AdapterResponse.Success(bank, ctx, messages) =>
           IO.pure(InboundMessage.success(bank, ctx, messages))
-        case CBSResponse.Error(code, msg, ctx, messages) =>
+        case AdapterResponse.Error(code, msg, ctx, messages) =>
           IO.pure(InboundMessage.error(code, msg, ctx, messages))
       }
       
@@ -96,7 +96,7 @@ object BankHandlers {
 }
 ```
 
-**You never modify this!** It just calls your `CBSConnector` implementation.
+**You never modify this!** It just calls your `LocalAdapter` implementation.
 
 ---
 
@@ -113,21 +113,21 @@ object BankHandlers {
 ```
 src/main/scala/com/tesobe/obp/adapter/
 ├── interfaces/
-│   └── CBSConnector.scala           📝 Interface you implement
+│   └── LocalAdapter.scala           📝 Interface you implement
 └── cbs/implementations/
-    └── YourBankConnector.scala      ⚙️ YOUR CODE - CBS integration
+    └── YourBankAdapter.scala      ⚙️ YOUR CODE - CBS integration
 ```
 
 ### Example: Your Bank Connector (Bank-Specific)
 
 ```scala
 // THIS is where YOUR bank-specific code goes
-class YourBankConnector(
+class YourBankAdapter(
   baseUrl: String,
   apiKey: String,
   httpClient: HttpClient,
   telemetry: Telemetry
-) extends CBSConnector {
+) extends LocalAdapter {
   
   override def name: String = "YourBank-REST-v1"
   override def version: String = "1.0.0"
@@ -136,7 +136,7 @@ class YourBankConnector(
   override def getBank(
     bankId: String,
     callContext: CallContext
-  ): IO[CBSResponse[BankCommons]] = {
+  ): IO[AdapterResponse[BankCommons]] = {
     
     // 1. Call YOUR CBS API (your protocol, your auth, your format)
     httpClient.get(
@@ -160,17 +160,17 @@ class YourBankConnector(
       )
       
       // 4. Return OBP response
-      IO.pure(CBSResponse.success(obpBank, callContext))
+      IO.pure(AdapterResponse.success(obpBank, callContext))
       
     }.handleErrorWith { error =>
       // 5. Handle YOUR error codes
       error match {
         case YourBankNotFoundException(_) =>
-          IO.pure(CBSResponse.error("BANK_NOT_FOUND", "Bank does not exist", callContext))
+          IO.pure(AdapterResponse.error("BANK_NOT_FOUND", "Bank does not exist", callContext))
         case YourBankAuthException(_) =>
-          IO.pure(CBSResponse.error("CBS_AUTH_FAILED", "Authentication failed", callContext))
+          IO.pure(AdapterResponse.error("CBS_AUTH_FAILED", "Authentication failed", callContext))
         case _ =>
-          IO.pure(CBSResponse.error("CBS_ERROR", error.getMessage, callContext))
+          IO.pure(AdapterResponse.error("CBS_ERROR", error.getMessage, callContext))
       }
     }
   }
@@ -209,8 +209,8 @@ src/main/scala/com/tesobe/obp/adapter/
 ### Example: Telemetry Usage
 
 ```scala
-// In YourBankConnector
-override def makePayment(...): IO[CBSResponse[TransactionCommons]] = {
+// In YourBankAdapter
+override def makePayment(...): IO[AdapterResponse[TransactionCommons]] = {
   for {
     // Start span
     spanId <- telemetry.startSpan("makePayment", callContext.correlationId)
@@ -223,9 +223,9 @@ override def makePayment(...): IO[CBSResponse[TransactionCommons]] = {
     
     // Record metrics
     _ <- result match {
-      case CBSResponse.Success(tx, _, _) =>
+      case AdapterResponse.Success(tx, _, _) =>
         telemetry.recordPaymentSuccess(bankId, tx.amount, tx.currency, callContext.correlationId)
-      case CBSResponse.Error(code, msg, _, _) =>
+      case AdapterResponse.Error(code, msg, _, _) =>
         telemetry.recordPaymentFailure(bankId, amount, currency, code, callContext.correlationId)
     }
     
@@ -258,12 +258,12 @@ override def makePayment(...): IO[CBSResponse[TransactionCommons]] = {
 ┃  2. Parse OBP message format                                 ┃
 ┃  3. Extract correlation ID, auth context                     ┃
 ┃  4. Route to handler by message type                         ┃
-┃  5. Call CBSConnector interface method                       ┃
+┃  5. Call LocalAdapter interface method                       ┃
 ┃  6. Build OBP response format                                ┃
 ┃  7. Send to RabbitMQ response queue                          ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
                               ↓ ↑
-                     trait CBSConnector {
+                     trait LocalAdapter {
                        def getBank(...): IO[...]
                        def makePayment(...): IO[...]
                      }
@@ -273,7 +273,7 @@ override def makePayment(...): IO[CBSResponse[TransactionCommons]] = {
 ┃                 (cbs/implementations/)                        ┃
 ┃                    ⚙️ YOU WRITE THIS                          ┃
 ┃                                                               ┃
-┃  class YourBankConnector extends CBSConnector {              ┃
+┃  class YourBankAdapter extends LocalAdapter {              ┃
 ┃    override def getBank(...) = {                             ┃
 ┃      // Call YOUR CBS API                                    ┃
 ┃      // Map YOUR data to OBP models                          ┃
@@ -312,7 +312,7 @@ override def makePayment(...): IO[CBSResponse[TransactionCommons]] = {
 ### Minimum Implementation (Read-Only Operations)
 
 ```scala
-class YourBankConnector extends CBSConnector {
+class YourBankAdapter extends LocalAdapter {
   // Bank operations
   def getBank(...)                  // ⚙️ Required
   def getBanks(...)                 // ⚙️ Required
@@ -335,7 +335,7 @@ class YourBankConnector extends CBSConnector {
   
   // Everything else - return error
   def makePayment(...) = IO.pure(
-    CBSResponse.error("NOT_IMPLEMENTED", "Payment not supported yet", ctx)
+    AdapterResponse.error("NOT_IMPLEMENTED", "Payment not supported yet", ctx)
   )
 }
 ```
@@ -361,7 +361,7 @@ Add these when ready:
 ✅ **Focus on CBS integration** - That's your domain expertise  
 ✅ **No RabbitMQ knowledge needed** - Already handled  
 ✅ **No OBP protocol knowledge needed** - Already handled  
-✅ **Clear interface contract** - Just implement `CBSConnector`  
+✅ **Clear interface contract** - Just implement `LocalAdapter`  
 ✅ **Type safety** - Compiler catches mistakes  
 ✅ **Testable** - Unit test your connector in isolation  
 
@@ -371,7 +371,7 @@ Add these when ready:
 ✅ **Standard monitoring** - Same metrics for all banks  
 ✅ **Standard configuration** - Environment variables  
 ✅ **Standard logging** - Correlation IDs everywhere  
-✅ **Multiple banks** - Run different connectors per instance  
+✅ **Multiple banks** - Run different adapters per instance  
 
 ### For OBP Team 🌐
 
@@ -392,11 +392,11 @@ Add these when ready:
 
 def handleGetAccountBalance(
   message: GetBalanceMessage,
-  connector: CBSConnector,  // Your implementation
+  localAdapter: LocalAdapter,  // Your implementation
   telemetry: Telemetry
 ): IO[InboundMessage] = {
   for {
-    result <- connector.getAccountBalance(
+    result <- localAdapter.getAccountBalance(
       message.data.bankId,
       message.data.accountId,
       message.callContext
@@ -408,14 +408,14 @@ def handleGetAccountBalance(
 
 ### Your Implementation
 ```scala
-// cbs/implementations/YourBankConnector.scala
+// cbs/implementations/YourBankAdapter.scala
 // ⚙️ Bank-specific - YOUR code
 
 override def getAccountBalance(
   bankId: String,
   accountId: String,
   callContext: CallContext
-): IO[CBSResponse[AccountBalance]] = {
+): IO[AdapterResponse[AccountBalance]] = {
   
   // Call YOUR CBS API
   httpClient.get(s"$baseUrl/accounts/$accountId/balance")
@@ -423,7 +423,7 @@ override def getAccountBalance(
       val balance = parseYourJson(response)
       
       // Map to OBP format
-      CBSResponse.success(
+      AdapterResponse.success(
         AccountBalance(
           currency = balance.currency,
           amount = balance.available_balance
@@ -446,7 +446,7 @@ override def getAccountBalance(
 | **OBP Message Models** | Generic | ✅ Nobody |
 | **Message Handlers** | Generic | ✅ Nobody |
 | **Message Router** | Generic | ✅ Nobody |
-| **CBSConnector Interface** | Contract | 📝 Extend if needed |
+| **LocalAdapter Interface** | Contract | 📝 Extend if needed |
 | **Your CBS Connector** | Bank-Specific | ⚙️ You implement |
 | **Telemetry Interface** | Contract | 📝 Extend if needed |
 | **Telemetry Implementation** | Configurable | 📊 You choose/implement |
@@ -460,13 +460,13 @@ override def getAccountBalance(
 A: You shouldn't need to. If you do, consider if it's really CBS-specific logic that should be in your connector instead.
 
 **Q: What if OBP adds a new message type?**  
-A: We update the generic handler, you implement the new method in `CBSConnector`.
+A: We update the generic handler, you implement the new method in `LocalAdapter`.
 
-**Q: Can I have multiple CBS connectors?**  
-A: Yes! Different instances can use different connectors for different banks.
+**Q: Can I have multiple local adapters?**  
+A: Yes! Different instances can use different adapters for different banks.
 
 **Q: Where do I put CBS-specific business logic?**  
-A: In your `CBSConnector` implementation. That's the whole point of this separation!
+A: In your `LocalAdapter` implementation. That's the whole point of this separation!
 
 **Q: How do I switch telemetry backends?**  
 A: Change configuration to use different `Telemetry` implementation. No code changes needed.

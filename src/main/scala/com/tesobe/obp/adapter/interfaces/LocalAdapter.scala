@@ -22,23 +22,23 @@ import com.tesobe.obp.adapter.models._
 import io.circe.JsonObject
 
 /**
- * Core interface for Core Banking System (CBS) connectors.
- * 
+ * Core interface for Core Banking System (CBS) adapters.
+ *
  * Each bank implements this trait to provide bank-specific logic for
  * communicating with their CBS. This separation ensures that:
- * 
+ *
  * 1. OBP message handling code remains generic and reusable
  * 2. CBS-specific code is isolated and can be customized per bank
  * 3. Multiple CBS implementations can coexist (REST, SOAP, Database, etc.)
- * 
+ *
  * The interface works directly with JSON (matching OBP Message Docs format):
  * - Input: JSON data field from OBP outbound message
  * - Output: JSON data field for OBP inbound response
- * 
- * All methods return IO[CBSResponse] where:
+ *
+ * All methods return IO[AdapterResponse] where:
  * - The outer IO represents the effect/computation
- * - CBSResponse wraps either success data (JSON) or error information
- * 
+ * - AdapterResponse wraps either success data (JSON) or error information
+ *
  * Implementations should handle:
  * - Network failures
  * - Authentication
@@ -46,20 +46,20 @@ import io.circe.JsonObject
  * - Mapping CBS responses to OBP message docs format
  * - Logging/tracing (using provided telemetry)
  */
-trait CBSConnector {
+trait LocalAdapter {
 
-  /** Connector name/identifier (e.g., "MyBank-REST-Connector") */
+  /** Adapter name/identifier (e.g., "MyBank-REST-Adapter") */
   def name: String
 
-  /** Connector version */
+  /** Adapter version */
   def version: String
 
   /**
    * Handle an OBP message.
-   * 
+   *
    * This is the main entry point. The generic adapter calls this method
    * for every message received from RabbitMQ.
-   * 
+   *
    * @param process The OBP message type (e.g., "obp.getBank", "obp.makePayment")
    * @param data The data payload from the OBP message (varies by message type)
    * @param callContext Context information (correlation ID, user info, etc.)
@@ -69,34 +69,34 @@ trait CBSConnector {
     process: String,
     data: JsonObject,
     callContext: CallContext
-  ): IO[CBSResponse]
+  ): IO[AdapterResponse]
 
   /**
    * Check if the CBS connection is healthy
    */
-  def checkHealth(callContext: CallContext): IO[CBSResponse]
+  def checkHealth(callContext: CallContext): IO[AdapterResponse]
 
   /**
-   * Get adapter/connector information
+   * Get adapter information
    */
-  def getAdapterInfo(callContext: CallContext): IO[CBSResponse]
+  def getAdapterInfo(callContext: CallContext): IO[AdapterResponse]
 }
 
 /**
- * Response from CBS operations.
- * Provides consistent error handling across all CBS implementations.
+ * Response from adapter operations.
+ * Provides consistent error handling across all adapter implementations.
  */
-sealed trait CBSResponse
+sealed trait AdapterResponse
 
-object CBSResponse {
-  
+object AdapterResponse {
+
   /**
    * Successful response with JSON data matching OBP message docs format
    */
   final case class Success(
     data: JsonObject,
     backendMessages: List[BackendMessage] = Nil
-  ) extends CBSResponse
+  ) extends AdapterResponse
 
   /**
    * Error response with details
@@ -105,12 +105,12 @@ object CBSResponse {
     errorCode: String,
     errorMessage: String,
     backendMessages: List[BackendMessage] = Nil
-  ) extends CBSResponse
+  ) extends AdapterResponse
 
   /** Convenience constructors */
-  def success(data: JsonObject, messages: List[BackendMessage] = Nil): CBSResponse =
+  def success(data: JsonObject, messages: List[BackendMessage] = Nil): AdapterResponse =
     Success(data, messages)
 
-  def error(code: String, message: String, messages: List[BackendMessage] = Nil): CBSResponse =
+  def error(code: String, message: String, messages: List[BackendMessage] = Nil): AdapterResponse =
     Error(code, message, messages)
 }

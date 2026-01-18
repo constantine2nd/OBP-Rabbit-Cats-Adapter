@@ -47,14 +47,14 @@ This adapter bridges the Open Bank Project (OBP) API and Core Banking Systems (C
 │  │   - Build responses                                 │   │
 │  └─────────────────────────────────────────────────────┘   │
 └──────────────────────┬──────────────────────────────────────┘
-                       │ CBSConnector Interface
+                       │ LocalAdapter Interface
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │               ADAPTER - INTERFACE LAYER                     │
 │                  (contracts/)                               │
 ├─────────────────────────────────────────────────────────────┤
-│  trait CBSConnector {                                       │
-│    def getBank(...): IO[CBSResponse[BankCommons]]          │
+│  trait LocalAdapter {                                       │
+│    def getBank(...): IO[AdapterResponse[BankCommons]]          │
 │    def getBankAccount(...): IO[...]                        │
 │    def makePayment(...): IO[...]                           │
 │    // ... all CBS operations                               │
@@ -68,10 +68,10 @@ This adapter bridges the Open Bank Project (OBP) API and Core Banking Systems (C
 ├─────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
 │  │   REST CBS   │  │   SOAP CBS   │  │   Mock CBS   │     │
-│  │ Connector    │  │ Connector    │  │ Connector    │     │
+│  │   Adapter    │  │   Adapter    │  │   Adapter    │     │
 │  │              │  │              │  │              │     │
 │  │ implements   │  │ implements   │  │ implements   │     │
-│  │ CBSConnector │  │ CBSConnector │  │ CBSConnector │     │
+│  │ LocalAdapter │  │ LocalAdapter │  │ LocalAdapter │     │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
 │         │                  │                  │             │
 │         └──────────────────┴──────────────────┘             │
@@ -126,14 +126,14 @@ src/main/scala/com/tesobe/obp/adapter/
 │   └── CustomerHandlers.scala
 │
 ├── interfaces/                # Contracts (generic)
-│   └── CBSConnector.scala    # THE interface CBS must implement
+│   └── LocalAdapter.scala    # THE interface CBS must implement
 │
 ├── cbs/                       # CBS implementations (bank-specific)
 │   └── implementations/
-│       ├── RestCBSConnector.scala     # HTTP REST implementation
-│       ├── SoapCBSConnector.scala     # SOAP implementation
-│       ├── MockCBSConnector.scala     # Testing/demo
-│       └── YourBankConnector.scala    # Bank-specific impl
+│       ├── RestLocalAdapter.scala     # HTTP REST implementation
+│       ├── SoapLocalAdapter.scala     # SOAP implementation
+│       ├── MockLocalAdapter.scala     # Testing/demo
+│       └── YourBankAdapter.scala    # Bank-specific impl
 │
 ├── telemetry/                 # Observability (generic framework)
 │   ├── Telemetry.scala       # Interface
@@ -146,29 +146,29 @@ src/main/scala/com/tesobe/obp/adapter/
 
 ## Key Interfaces
 
-### 1. CBSConnector (interfaces/CBSConnector.scala)
+### 1. LocalAdapter (interfaces/LocalAdapter.scala)
 
 **Purpose**: Define what operations a CBS must support
 
 **Bank Developers**: Implement this trait for your specific CBS
 
 ```scala
-trait CBSConnector {
+trait LocalAdapter {
   def name: String
   def version: String
 
   // Core operations
-  def getBank(bankId: String, callContext: CallContext): IO[CBSResponse[BankCommons]]
-  def getBankAccount(...): IO[CBSResponse[BankAccountCommons]]
-  def makePayment(...): IO[CBSResponse[TransactionCommons]]
+  def getBank(bankId: String, callContext: CallContext): IO[AdapterResponse[BankCommons]]
+  def getBankAccount(...): IO[AdapterResponse[BankAccountCommons]]
+  def makePayment(...): IO[AdapterResponse[TransactionCommons]]
   // ... 30+ operations covering OBP functionality
 }
 ```
 
 **Key Points**:
 
-- All methods return `IO[CBSResponse[T]]` for pure functional effects
-- `CBSResponse` is a sealed trait with `Success` and `Error` cases
+- All methods return `IO[AdapterResponse[T]]` for pure functional effects
+- `AdapterResponse` is a sealed trait with `Success` and `Error` cases
 - `CallContext` contains correlation ID, user info, auth context
 - Bank-specific logic stays in your implementation
 
@@ -222,11 +222,11 @@ MessageRouter extracts message type (e.g., "obp.getBank")
     ↓
 Route to appropriate Handler (e.g., BankHandlers)
     ↓
-Handler calls CBSConnector.getBank()
+Handler calls LocalAdapter.getBank()
     ↓
-CBSConnector implementation makes CBS call
+LocalAdapter implementation makes CBS call
     ↓
-Response wrapped in CBSResponse
+Response wrapped in AdapterResponse
     ↓
 Handler builds InboundAdapterCallContext
     ↓
@@ -240,7 +240,7 @@ Telemetry.recordMessageProcessed()
 ```
 If CBS call fails:
     ↓
-CBSResponse.Error returned
+AdapterResponse.Error returned
     ↓
 Telemetry.recordCBSOperationFailure()
     ↓
@@ -251,7 +251,7 @@ Error response sent to OBP with proper error codes
 Telemetry.recordMessageFailed()
 ```
 
-## Implementing a New CBS Connector
+## Implementing a New Local Adapter
 
 ### Step 1: Create Implementation Class
 
@@ -262,16 +262,16 @@ import com.tesobe.obp.adapter.interfaces._
 import com.tesobe.obp.adapter.models._
 import cats.effect.IO
 
-class MyBankConnector(
+class MyBankAdapter(
   baseUrl: String,
   apiKey: String,
   telemetry: Telemetry
-) extends CBSConnector {
+) extends LocalAdapter {
 
-  override def name: String = "MyBank-REST-Connector"
+  override def name: String = "MyBank-REST-Adapter"
   override def version: String = "1.0.0"
 
-  override def getBank(bankId: String, callContext: CallContext): IO[CBSResponse[BankCommons]] = {
+  override def getBank(bankId: String, callContext: CallContext): IO[AdapterResponse[BankCommons]] = {
     for {
       // Start telemetry
       _ <- telemetry.recordCBSOperationStart("getBank", callContext.correlationId)
@@ -280,7 +280,7 @@ class MyBankConnector(
       result <- httpClient.get(s"$baseUrl/banks/$bankId")
         .map(response =>
           // Map CBS response to OBP BankCommons
-          CBSResponse.success(
+          AdapterResponse.success(
             BankCommons(
               bankId = response.id,
               shortName = response.name,
@@ -291,7 +291,7 @@ class MyBankConnector(
           )
         )
         .handleErrorWith(error =>
-          IO.pure(CBSResponse.error(
+          IO.pure(AdapterResponse.error(
             "BANK_NOT_FOUND",
             error.getMessage,
             callContext
@@ -303,17 +303,17 @@ class MyBankConnector(
     } yield result
   }
 
-  // Implement all other CBSConnector methods...
+  // Implement all other LocalAdapter methods...
 }
 ```
 
-### Step 2: Register Connector
+### Step 2: Register Adapter
 
 ```scala
 // In AdapterMain.scala or config
-val connector: CBSConnector = config.cbsType match {
-  case "mybank" => new MyBankConnector(config.baseUrl, config.apiKey, telemetry)
-  case "mock" => new MockCBSConnector(telemetry)
+val localAdapter: LocalAdapter = config.cbsType match {
+  case "mybank" => new MyBankAdapter(config.baseUrl, config.apiKey, telemetry)
+  case "mock" => new MockLocalAdapter(telemetry)
   case _ => throw new IllegalArgumentException(s"Unknown CBS type: ${config.cbsType}")
 }
 ```
@@ -344,7 +344,7 @@ java -jar obp-rabbit-cats-adapter.jar
 - `RABBITMQ_RESPONSE_QUEUE` - Queue to send responses to
 
 **CBS Configuration**:
-Your bank-specific CBS connector will define what configuration it needs.
+Your bank-specific local adapter will define what configuration it needs.
 
 **Telemetry Configuration**:
 
@@ -355,16 +355,16 @@ Your bank-specific CBS connector will define what configuration it needs.
 
 ### 1. Unit Tests
 
-Test CBS connector implementations in isolation:
+Test local adapter implementations in isolation:
 
 ```scala
-class MyBankConnectorSpec extends CatsEffectSuite {
+class MyBankAdapterSpec extends CatsEffectSuite {
   test("getBank returns bank when CBS responds successfully") {
-    val connector = new MyBankConnector(mockHttpClient, NoOpTelemetry)
-    val result = connector.getBank("bank-id", CallContext("corr-123"))
+    val adapter = new MyBankAdapter(mockHttpClient, NoOpTelemetry)
+    val result = adapter.getBank("bank-id", CallContext("corr-123"))
 
     result.map {
-      case CBSResponse.Success(bank, _, _) =>
+      case AdapterResponse.Success(bank, _, _) =>
         assertEquals(bank.bankId, "bank-id")
       case _ => fail("Expected success")
     }
@@ -385,12 +385,12 @@ test("adapter processes obp.getBank message end-to-end") {
 
 ### 3. CBS Stub for Development
 
-Use `MockCBSConnector` for development without real CBS:
+Use `MockLocalAdapter` for development without real CBS:
 
 ```scala
-class MockCBSConnector extends CBSConnector {
+class MockLocalAdapter extends LocalAdapter {
   def getBank(...) = IO.pure(
-    CBSResponse.success(
+    AdapterResponse.success(
       BankCommons(
         bankId = "mock-bank",
         shortName = "Mock",
@@ -485,7 +485,7 @@ spec:
 
 ### For Bank Developers
 
-✅ **Only implement `CBSConnector` trait** - Clear contract  
+✅ **Only implement `LocalAdapter` trait** - Clear contract  
 ✅ **No RabbitMQ knowledge needed** - Already handled  
 ✅ **No OBP message format knowledge needed** - Already handled  
 ✅ **Focus on CBS integration** - Your domain expertise  
@@ -509,7 +509,7 @@ spec:
 
 ## Next Steps
 
-1. **Implement your CBS connector** - Extend `CBSConnector` trait
+1. **Implement your local adapter** - Extend `LocalAdapter` trait
 2. **Configure environment** - Set CBS credentials and endpoints
 3. **Choose telemetry backend** - Console for dev, Prometheus for prod
 4. **Deploy and monitor** - Use provided metrics

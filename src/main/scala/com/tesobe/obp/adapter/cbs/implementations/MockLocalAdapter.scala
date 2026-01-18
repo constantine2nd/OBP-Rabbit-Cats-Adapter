@@ -24,27 +24,27 @@ import com.tesobe.obp.adapter.telemetry.Telemetry
 import io.circe._
 
 /**
- * Mock CBS Connector for testing and development.
- * 
+ * Mock Local Adapter for testing and development.
+ *
  * This demonstrates the JSON-based approach where:
  * 1. We receive JSON data from OBP message
  * 2. Extract fields we need
  * 3. Call CBS (mocked here)
  * 4. Return JSON matching OBP message docs format
- * 
+ *
  * Banks should implement similar logic but calling their real CBS API.
  */
-class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
+class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
 
-  override def name: String = "Mock-CBS-Connector"
+  override def name: String = "Mock-Local-Adapter"
   override def version: String = "1.0.0"
 
   override def handleMessage(
     process: String,
     data: JsonObject,
     callContext: CallContext
-  ): IO[CBSResponse] = {
-    
+  ): IO[AdapterResponse] = {
+
     process match {
       case "obp.getAdapterInfo" => getAdapterInfo(callContext)
       case "obp.getBank" => getBank(data, callContext)
@@ -57,9 +57,9 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     }
   }
 
-  override def checkHealth(callContext: CallContext): IO[CBSResponse] = {
+  override def checkHealth(callContext: CallContext): IO[AdapterResponse] = {
     IO.pure(
-      CBSResponse.success(
+      AdapterResponse.success(
         JsonObject(
           "status" -> Json.fromString("healthy"),
           "message" -> Json.fromString("Mock CBS is operational"),
@@ -69,15 +69,15 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     )
   }
 
-  override def getAdapterInfo(callContext: CallContext): IO[CBSResponse] = {
+  override def getAdapterInfo(callContext: CallContext): IO[AdapterResponse] = {
     IO.pure(
-      CBSResponse.success(
+      AdapterResponse.success(
         JsonObject(
           "name" -> Json.fromString("OBP-Rabbit-Cats-Adapter"),
           "version" -> Json.fromString("1.0.0-SNAPSHOT"),
           "description" -> Json.fromString("Functional RabbitMQ adapter for Open Bank Project"),
-          "connector" -> Json.fromString(name),
-          "connector_version" -> Json.fromString(version),
+          "local_adapter" -> Json.fromString(name),
+          "local_adapter_version" -> Json.fromString(version),
           "scala_version" -> Json.fromString("2.13.15"),
           "cats_effect_version" -> Json.fromString("3.5.7"),
           "rabbitmq_client" -> Json.fromString("amqp-client 5.20.0"),
@@ -92,13 +92,13 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
 
   // ==================== EXAMPLE IMPLEMENTATIONS ====================
 
-  private def getBank(data: JsonObject, callContext: CallContext): IO[CBSResponse] = {
+  private def getBank(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
     // Extract bankId from the data payload
     val bankId = data("bankId").flatMap(_.asString).getOrElse("unknown")
-    
+
     telemetry.debug(s"Getting bank: $bankId", Some(callContext.correlationId)) *>
     IO.pure(
-      CBSResponse.success(
+      AdapterResponse.success(
         JsonObject(
           "bankId" -> Json.fromString(bankId),
           "shortName" -> Json.fromString("Mock Bank"),
@@ -110,13 +110,13 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     )
   }
 
-  private def getBankAccount(data: JsonObject, callContext: CallContext): IO[CBSResponse] = {
+  private def getBankAccount(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
     val bankId = data("bankId").flatMap(_.asString).getOrElse("unknown")
     val accountId = data("accountId").flatMap(_.asString).getOrElse("unknown")
-    
+
     telemetry.debug(s"Getting account: $accountId at bank: $bankId", Some(callContext.correlationId)) *>
     IO.pure(
-      CBSResponse.success(
+      AdapterResponse.success(
         JsonObject(
           "bankId" -> Json.fromString(bankId),
           "accountId" -> Json.fromString(accountId),
@@ -139,12 +139,12 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     )
   }
 
-  private def getTransaction(data: JsonObject, callContext: CallContext): IO[CBSResponse] = {
+  private def getTransaction(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
     val transactionId = data("transactionId").flatMap(_.asString).getOrElse("unknown")
-    
+
     telemetry.debug(s"Getting transaction: $transactionId", Some(callContext.correlationId)) *>
     IO.pure(
-      CBSResponse.success(
+      AdapterResponse.success(
         JsonObject(
           "transactionId" -> Json.fromString(transactionId),
           "accountId" -> data("accountId").getOrElse(Json.fromString("account-123")),
@@ -160,12 +160,12 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     )
   }
 
-  private def getTransactions(data: JsonObject, callContext: CallContext): IO[CBSResponse] = {
+  private def getTransactions(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
     val accountId = data("accountId").flatMap(_.asString).getOrElse("unknown")
-    
+
     telemetry.debug(s"Getting transactions for account: $accountId", Some(callContext.correlationId)) *>
     IO.pure(
-      CBSResponse.success(
+      AdapterResponse.success(
         JsonObject(
           "transactions" -> Json.arr(
             Json.obj(
@@ -192,13 +192,13 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     )
   }
 
-  private def checkFundsAvailable(data: JsonObject, callContext: CallContext): IO[CBSResponse] = {
+  private def checkFundsAvailable(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
     val amount = data("amount").flatMap(_.asString).getOrElse("0")
     val currency = data("currency").flatMap(_.asString).getOrElse("EUR")
-    
+
     telemetry.debug(s"Checking funds: $amount $currency", Some(callContext.correlationId)) *>
     IO.pure(
-      CBSResponse.success(
+      AdapterResponse.success(
         JsonObject(
           "available" -> Json.fromBoolean(true),
           "amount" -> Json.fromString(amount),
@@ -208,11 +208,11 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     )
   }
 
-  private def makePayment(data: JsonObject, callContext: CallContext): IO[CBSResponse] = {
+  private def makePayment(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
     val amount = data("amount").flatMap(_.asString).getOrElse("0")
     val currency = data("currency").flatMap(_.asString).getOrElse("EUR")
     val description = data("description").flatMap(_.asString).getOrElse("Payment")
-    
+
     telemetry.recordPaymentSuccess(
       bankId = "mock-bank",
       amount = BigDecimal(amount),
@@ -220,7 +220,7 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
       correlationId = callContext.correlationId
     ) *>
     IO.pure(
-      CBSResponse.success(
+      AdapterResponse.success(
         JsonObject(
           "transactionId" -> Json.fromString(s"tx-${System.currentTimeMillis()}"),
           "amount" -> Json.fromString(amount),
@@ -242,10 +242,10 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     )
   }
 
-  private def handleUnsupported(process: String, callContext: CallContext): IO[CBSResponse] = {
+  private def handleUnsupported(process: String, callContext: CallContext): IO[AdapterResponse] = {
     telemetry.warn(s"Unsupported message type: $process", Some(callContext.correlationId)) *>
     IO.pure(
-      CBSResponse.error(
+      AdapterResponse.error(
         code = "OBP-50000",
         message = s"Message type not implemented: $process",
         messages = List(
@@ -253,7 +253,7 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
             source = "MockCBS",
             status = "error",
             errorCode = "NOT_IMPLEMENTED",
-            text = s"Message type $process is not implemented in MockCBSConnector",
+            text = s"Message type $process is not implemented in MockLocalAdapter",
             duration = None
           )
         )
@@ -262,6 +262,6 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
   }
 }
 
-object MockCBSConnector {
-  def apply(telemetry: Telemetry): MockCBSConnector = new MockCBSConnector(telemetry)
+object MockLocalAdapter {
+  def apply(telemetry: Telemetry): MockLocalAdapter = new MockLocalAdapter(telemetry)
 }

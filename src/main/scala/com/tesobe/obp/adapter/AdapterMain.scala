@@ -7,7 +7,7 @@
 package com.tesobe.obp.adapter
 
 import cats.effect.{ExitCode, IO, IOApp}
-import com.tesobe.obp.adapter.cbs.implementations.MockCBSConnector
+import com.tesobe.obp.adapter.cbs.implementations.MockLocalAdapter
 import com.tesobe.obp.adapter.config.Config
 import com.tesobe.obp.adapter.http.DiscoveryServer
 import com.tesobe.obp.adapter.messaging.{
@@ -56,17 +56,17 @@ object AdapterMain extends IOApp {
       _ <- IO.println("[TELEMETRY] Initialized (Console mode)")
       _ <- IO.println("")
 
-      // Create CBS connector
-      _ <- IO.println("[CBS] Initializing CBS connector...")
-      connector = new MockCBSConnector(telemetry)
+      // Create local adapter
+      _ <- IO.println("[CBS] Initializing local adapter...")
+      localAdapter = new MockLocalAdapter(telemetry)
       _ <- IO.println(
-        s"[OK] CBS Connector: ${connector.name} v${connector.version}"
+        s"[OK] Local Adapter: ${localAdapter.name} v${localAdapter.version}"
       )
       _ <- IO.println("")
 
       // Test CBS health
       _ <- IO.println("[HEALTH] Checking CBS health...")
-      healthResult <- connector.checkHealth(
+      healthResult <- localAdapter.checkHealth(
         com.tesobe.obp.adapter.models.CallContext(
           correlationId = "startup-health-check",
           sessionId = "startup",
@@ -77,9 +77,9 @@ object AdapterMain extends IOApp {
         )
       )
       _ <- healthResult match {
-        case com.tesobe.obp.adapter.interfaces.CBSResponse.Success(data, _) =>
+        case com.tesobe.obp.adapter.interfaces.AdapterResponse.Success(data, _) =>
           IO.println("[OK] CBS is healthy")
-        case com.tesobe.obp.adapter.interfaces.CBSResponse
+        case com.tesobe.obp.adapter.interfaces.AdapterResponse
               .Error(code, msg, _) =>
           IO.println(s"[WARNING] CBS health check failed: $code - $msg")
       }
@@ -124,7 +124,7 @@ object AdapterMain extends IOApp {
                        IO.println("") *>
                        RabbitMQConsumer.run(
                          config,
-                         connector,
+                         localAdapter,
                          telemetry,
                          Some(redis)
                        )
@@ -134,7 +134,7 @@ object AdapterMain extends IOApp {
                      IO.println("") *>
                      RabbitMQConsumer.run(
                        config,
-                       connector,
+                       localAdapter,
                        telemetry,
                        Some(redis)
                      )
@@ -153,12 +153,12 @@ object AdapterMain extends IOApp {
                   s"[INFO] Visit http://localhost:${config.http.port} to see service info"
                 ) *>
                 IO.println("") *>
-                RabbitMQConsumer.run(config, connector, telemetry, None)
+                RabbitMQConsumer.run(config, localAdapter, telemetry, None)
             }
           } else {
             IO.println("[INFO] HTTP server disabled") *>
               IO.println("") *>
-              RabbitMQConsumer.run(config, connector, telemetry, None)
+              RabbitMQConsumer.run(config, localAdapter, telemetry, None)
           }
         }
       ).as(ExitCode.Success).handleErrorWith { error =>

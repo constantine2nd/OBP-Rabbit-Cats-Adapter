@@ -7,7 +7,7 @@ Do not clone and modify this repository.
 Instead:
 
 1. Use this adapter as a **library dependency** or **base Docker image**
-2. Create your **own separate project** with just your CBS connector implementation
+2. Create your **own separate project** with just your local adapter implementation
 3. Keep your bank-specific code in your own repository
 4. Get adapter updates without merge conflicts
 
@@ -46,7 +46,7 @@ mvn clean install
 mvn deploy
 ```
 
-#### Step 2: Create Your Bank's Connector Project
+#### Step 2: Create Your Bank's Adapter Project
 
 ```bash
 mkdir my-bank-obp-adapter
@@ -74,28 +74,28 @@ Create `pom.xml`:
 </project>
 ```
 
-#### Step 3: Implement Your Connector
+#### Step 3: Implement Your Local Adapter
 
 ```scala
-// src/main/scala/com/mybank/obp/MyBankConnector.scala
+// src/main/scala/com/mybank/obp/MyBankAdapter.scala
 package com.mybank.obp
 
 import com.tesobe.obp.adapter.interfaces._
 import com.tesobe.obp.adapter.models._
 import cats.effect.IO
 
-class MyBankConnector(
+class MyBankAdapter(
   config: MyBankConfig,
   telemetry: Telemetry
-) extends CBSConnector {
+) extends LocalAdapter {
 
-  override def name: String = "MyBank-Production-Connector"
+  override def name: String = "MyBank-Production-Adapter"
   override def version: String = "1.0.0"
 
   override def getBank(
     bankId: String,
     callContext: CallContext
-  ): IO[CBSResponse[BankCommons]] = {
+  ): IO[AdapterResponse[BankCommons]] = {
     // YOUR code to call YOUR CBS
     ???
   }
@@ -124,11 +124,11 @@ object MyBankAdapterMain extends IOApp.Simple {
       // Create telemetry
       telemetry = new ConsoleTelemetry()
 
-      // Create YOUR connector
-      connector = new MyBankConnector(config, telemetry)
+      // Create YOUR local adapter
+      localAdapter = new MyBankAdapter(config, telemetry)
 
-      // Run the adapter with YOUR connector
-      _ <- AdapterMain.runWithConnector(connector, telemetry)
+      // Run the adapter with YOUR local adapter
+      _ <- AdapterMain.runWithAdapter(connector, telemetry)
 
     } yield ()
   }
@@ -167,7 +167,7 @@ Your bank's repository structure:
 ```
 my-bank-obp-adapter/
 ├── src/main/scala/com/mybank/obp/
-│   ├── MyBankConnector.scala          # Your CBS implementation
+│   ├── MyBankAdapter.scala          # Your CBS implementation
 │   ├── MyBankConfig.scala             # Your config
 │   └── MyBankMain.scala               # Your entry point
 ├── Dockerfile                          # Extends base image
@@ -221,7 +221,7 @@ my-bank-obp-project/
 │   └── src/main/scala/...            # Generic code - don't modify!
 ├── mybank-adapter/                  # Your code
 │   └── src/main/scala/com/mybank/
-│       ├── MyBankConnector.scala     # Your implementation
+│       ├── MyBankAdapter.scala     # Your implementation
 │       └── MyBankMain.scala
 ├── pom.xml                           # Parent POM
 └── README.md
@@ -260,13 +260,13 @@ git commit -m "Update adapter to latest version"
 ```
 mybank-obp-adapter/                  # YOUR repository
 ├── src/main/scala/com/mybank/obp/
-│   ├── MyBankConnector.scala          # Implements CBSConnector
+│   ├── MyBankAdapter.scala          # Implements LocalAdapter
 │   ├── MyBankConfig.scala             # Your config loading
 │   ├── MyBankHttpClient.scala         # Your HTTP client setup
 │   ├── MyBankAuthHandler.scala        # Your auth logic
 │   └── MyBankMain.scala               # Entry point
 ├── src/test/scala/com/mybank/obp/
-│   └── MyBankConnectorSpec.scala      # Your tests
+│   └── MyBankAdapterSpec.scala      # Your tests
 ├── pom.xml                            # Depends on obp-adapter
 ├── Dockerfile                         # Builds your image
 ├── .env.example                       # Config template
@@ -278,7 +278,7 @@ mybank-obp-adapter/                  # YOUR repository
 
 DO commit:
 
-- Your `MyBankConnector.scala` implementation
+- Your `MyBankAdapter.scala` implementation
 - Your `MyBankMain.scala` entry point
 - Your tests
 - Your `pom.xml` / `build.sbt`
@@ -300,9 +300,9 @@ DON'T commit:
 ### Scenario 1: Implementing a New CBS Operation
 
 ```scala
-// In YOUR repository: mybank-adapter/src/main/scala/com/mybank/obp/MyBankConnector.scala
+// In YOUR repository: mybank-adapter/src/main/scala/com/mybank/obp/MyBankAdapter.scala
 
-class MyBankConnector(...) extends CBSConnector {
+class MyBankAdapter(...) extends LocalAdapter {
 
   // Add implementation for new operation
   override def makePayment(
@@ -310,7 +310,7 @@ class MyBankConnector(...) extends CBSConnector {
     accountId: String,
     paymentData: PaymentData,
     callContext: CallContext
-  ): IO[CBSResponse[TransactionCommons]] = {
+  ): IO[AdapterResponse[TransactionCommons]] = {
 
     for {
       // 1. Validate with YOUR business rules
@@ -327,7 +327,7 @@ class MyBankConnector(...) extends CBSConnector {
       transaction <- IO.pure(mapToOBPTransaction(response))
 
       // 4. Return success
-      result = CBSResponse.success(transaction, callContext)
+      result = AdapterResponse.success(transaction, callContext)
 
     } yield result
   }
@@ -411,7 +411,7 @@ spec:
   template:
     spec:
       containers:
-        - name: connector
+        - name: adapter
           image: mybank-obp-adapter:1.0.0
           env:
             - name: RABBITMQ_HOST
@@ -436,7 +436,7 @@ spec:
 - Easy updates - Update adapter version in one line
 - No merge conflicts - Your code never conflicts with adapter updates
 - Secure - Your credentials stay in your private repo
-- Testable - Test your connector independently
+- Testable - Test your local adapter independently
 - Maintainable - Clear boundary between generic and bank-specific code
 
 ### For OBP Project
@@ -479,20 +479,20 @@ EOF
 
 ```bash
 mkdir -p src/main/scala/com/mybank/obp
-cat > src/main/scala/com/mybank/obp/MyBankConnector.scala <<'EOF'
+cat > src/main/scala/com/mybank/obp/MyBankAdapter.scala <<'EOF'
 package com.mybank.obp
 
 import com.tesobe.obp.adapter.interfaces._
 import com.tesobe.obp.adapter.models._
 import cats.effect.IO
 
-class MyBankConnector extends CBSConnector {
-  override def name = "MyBank-Connector"
+class MyBankAdapter extends LocalAdapter {
+  override def name = "MyBank-Adapter"
   override def version = "1.0.0"
 
   override def getBank(bankId: String, ctx: CallContext) = {
     // TODO: Implement
-    IO.pure(CBSResponse.error("NOT_IMPLEMENTED", "TODO", ctx))
+    IO.pure(AdapterResponse.error("NOT_IMPLEMENTED", "TODO", ctx))
   }
 
   // Implement other methods...
@@ -540,4 +540,4 @@ A: Unit test it in isolation using mock HTTP clients. See your repo's test direc
 A: Open an issue or PR in the adapter repository. Benefits all banks!
 
 **Q: How do I handle multiple CBS backends?**  
-A: Create multiple connector implementations in your repo, configure which to use via environment variable.
+A: Create multiple local adapter implementations in your repo, configure which to use via environment variable.

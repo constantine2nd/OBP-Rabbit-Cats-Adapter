@@ -12,7 +12,7 @@ package com.tesobe.obp.adapter.messaging
 import cats.effect.IO
 import cats.syntax.either._
 import com.tesobe.obp.adapter.config.AdapterConfig
-import com.tesobe.obp.adapter.interfaces.CBSConnector
+import com.tesobe.obp.adapter.interfaces.LocalAdapter
 import com.tesobe.obp.adapter.models._
 import com.tesobe.obp.adapter.telemetry.Telemetry
 import com.tesobe.obp.adapter.http.DiscoveryServer
@@ -23,7 +23,7 @@ import scala.concurrent.duration._
 
 /** RabbitMQ consumer for OBP messages
   *
-  * Consumes messages from the request queue, processes them via CBS connector,
+  * Consumes messages from the request queue, processes them via local adapter,
   * and sends responses to the response queue.
   */
 object RabbitMQConsumer {
@@ -32,7 +32,7 @@ object RabbitMQConsumer {
     */
   def run(
       config: AdapterConfig,
-      connector: CBSConnector,
+      localAdapter: LocalAdapter,
       telemetry: Telemetry,
       redis: Option[dev.profunktor.redis4cats.RedisCommands[IO, String, String]]
   ): IO[Unit] = {
@@ -75,7 +75,7 @@ object RabbitMQConsumer {
                   message,
                   routingKey,
                   config,
-                  connector,
+                  localAdapter,
                   telemetry,
                   redis
                 )
@@ -100,7 +100,7 @@ object RabbitMQConsumer {
       messageJson: String,
       process: String,
       config: AdapterConfig,
-      connector: CBSConnector,
+      localAdapter: LocalAdapter,
       telemetry: Telemetry,
       redis: Option[dev.profunktor.redis4cats.RedisCommands[IO, String, String]]
   ): IO[Unit] = {
@@ -135,16 +135,16 @@ object RabbitMQConsumer {
       // Log message processing
       _ <- IO.println(s"[${callContext.correlationId}] Processing: $process")
 
-      // Handle adapter-specific messages or delegate to CBS
-      cbsResponse <- process match {
+      // Handle adapter-specific messages or delegate to local adapter
+      adapterResponse <- process match {
         case "obp.getAdapterInfo" =>
-          handleGetAdapterInfo(connector, callContext)
+          handleGetAdapterInfo(localAdapter, callContext)
         case _ =>
-          connector.handleMessage(process, dataFields, callContext)
+          localAdapter.handleMessage(process, dataFields, callContext)
       }
 
       // Build inbound message
-      inboundMsg <- buildInboundMessage(outboundMsg, cbsResponse)
+      inboundMsg <- buildInboundMessage(outboundMsg, adapterResponse)
 
       // Send response
       _ <- sendResponse(client, channel, config.queue.responseQueue, inboundMsg)
@@ -186,12 +186,12 @@ object RabbitMQConsumer {
     }
   }
 
-  /** Handle getAdapterInfo - returns adapter information, not CBS information
+  /** Handle getAdapterInfo - returns adapter information
     */
   private def handleGetAdapterInfo(
-      connector: CBSConnector,
+      localAdapter: LocalAdapter,
       callContext: CallContext
-  ): IO[com.tesobe.obp.adapter.interfaces.CBSResponse] = {
+  ): IO[com.tesobe.obp.adapter.interfaces.AdapterResponse] = {
     import io.circe.Json
     import io.circe.JsonObject
     import scala.sys.process._
@@ -204,7 +204,7 @@ object RabbitMQConsumer {
       }
 
     IO.pure(
-      com.tesobe.obp.adapter.interfaces.CBSResponse.success(
+      com.tesobe.obp.adapter.interfaces.AdapterResponse.success(
         JsonObject(
           "name" -> Json.fromString("OBP-Rabbit-Cats-Adapter"),
           "version" -> Json.fromString("1.0.0-SNAPSHOT"),
@@ -233,12 +233,12 @@ object RabbitMQConsumer {
     */
   private def buildInboundMessage(
       outboundMsg: OutboundMessage,
-      cbsResponse: com.tesobe.obp.adapter.interfaces.CBSResponse
+      adapterResponse: com.tesobe.obp.adapter.interfaces.AdapterResponse
   ): IO[InboundMessage] = {
     val ctx = outboundMsg.outboundAdapterCallContext
 
-    cbsResponse match {
-      case com.tesobe.obp.adapter.interfaces.CBSResponse
+    adapterResponse match {
+      case com.tesobe.obp.adapter.interfaces.AdapterResponse
             .Success(data, messages) =>
         IO.pure(
           InboundMessage.success(
@@ -249,7 +249,7 @@ object RabbitMQConsumer {
           )
         )
 
-      case com.tesobe.obp.adapter.interfaces.CBSResponse
+      case com.tesobe.obp.adapter.interfaces.AdapterResponse
             .Error(code, message, messages) =>
         IO.pure(
           InboundMessage.error(

@@ -127,8 +127,8 @@ You should see:
 
 [TELEMETRY] Initialized (Console mode)
 
-[CBS] Initializing CBS connector...
-[OK] CBS Connector: Mock-CBS-Connector v1.0.0
+[CBS] Initializing local adapter...
+[OK] Local Adapter: Mock-Local-Adapter v1.0.0
 
 [HEALTH] Checking CBS health...
 [OK] CBS is healthy
@@ -209,7 +209,7 @@ You should see:
     "errorCode": ""
   },
   "data": {
-    "name": "Mock-CBS-Connector",
+    "name": "Mock-Local-Adapter",
     "version": "1.0.0",
     "git_commit": "mock-commit-123",
     "date": "2025-01-14"
@@ -274,7 +274,7 @@ RabbitMQ Consumer
     |
     | Parse & route message
     v
-CBS Connector (Mock)
+Local Adapter (Mock)
     |
     | Process business logic
     v
@@ -316,7 +316,7 @@ Response Queue
 
 ## Supported Test Messages
 
-The Mock CBS Connector supports these message types:
+The Mock Local Adapter supports these message types:
 
 - `obp.getAdapterInfo` - Get adapter information
 - `obp.getBank` - Get bank details
@@ -366,7 +366,7 @@ Check:
 
 ## Next Steps
 
-1. **Implement Your CBS Connector**: Replace `MockCBSConnector` with your bank's implementation
+1. **Implement Your Local Adapter**: Replace `MockLocalAdapter` with your bank's implementation
    - See `HOW-BANKS-USE-THIS.md`
    - See `ARCHITECTURE.md`
 

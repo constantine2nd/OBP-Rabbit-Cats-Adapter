@@ -38,13 +38,13 @@ Instead, we work directly with JSON:
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    YOUR CBS CONNECTOR                       │
+│                    YOUR LOCAL ADAPTER                       │
 │                                                             │
 │  def handleMessage(                                         │
 │    messageType: String,     ← "obp.getBank"                │
 │    data: JsonObject,        ← {"bankId": "gh.29.uk"}       │
 │    callContext: CallContext                                 │
-│  ): IO[CBSResponse]                                         │
+│  ): IO[AdapterResponse]                                         │
 │                                                             │
 │  You extract what you need, call your CBS,                 │
 │  return JSON matching message docs format                  │
@@ -101,10 +101,10 @@ case class CallContext(
 
 ---
 
-## Your CBS Connector Interface
+## Your Local Adapter Interface
 
 ```scala
-trait CBSConnector {
+trait LocalAdapter {
   def name: String
   def version: String
   
@@ -113,17 +113,17 @@ trait CBSConnector {
     messageType: String,
     data: JsonObject,
     callContext: CallContext
-  ): IO[CBSResponse]
+  ): IO[AdapterResponse]
   
   // Health checks
-  def checkHealth(callContext: CallContext): IO[CBSResponse]
-  def getAdapterInfo(callContext: CallContext): IO[CBSResponse]
+  def checkHealth(callContext: CallContext): IO[AdapterResponse]
+  def getAdapterInfo(callContext: CallContext): IO[AdapterResponse]
 }
 
 // Response is either Success with JSON or Error
-sealed trait CBSResponse
-case class Success(data: JsonObject, backendMessages: List[BackendMessage]) extends CBSResponse
-case class Error(errorCode: String, errorMessage: String, backendMessages: List[BackendMessage]) extends CBSResponse
+sealed trait AdapterResponse
+case class Success(data: JsonObject, backendMessages: List[BackendMessage]) extends AdapterResponse
+case class Error(errorCode: String, errorMessage: String, backendMessages: List[BackendMessage]) extends AdapterResponse
 ```
 
 ---
@@ -153,12 +153,12 @@ def handleMessage(
   messageType: String,      // "obp.getBank"
   data: JsonObject,          // {"bankId": "gh.29.uk"}
   callContext: CallContext
-): IO[CBSResponse] = {
+): IO[AdapterResponse] = {
   
   messageType match {
     case "obp.getBank" => getBank(data, callContext)
     case "obp.getBankAccount" => getBankAccount(data, callContext)
-    case _ => IO.pure(CBSResponse.error("NOT_IMPLEMENTED", s"Unknown: $messageType"))
+    case _ => IO.pure(AdapterResponse.error("NOT_IMPLEMENTED", s"Unknown: $messageType"))
   }
 }
 ```
@@ -166,7 +166,7 @@ def handleMessage(
 ### Step 3: You extract fields and call YOUR CBS
 
 ```scala
-private def getBank(data: JsonObject, callContext: CallContext): IO[CBSResponse] = {
+private def getBank(data: JsonObject, callContext: CallContext): IO[AdapterResponse] = {
   // 1. Extract what you need from JSON
   val bankId = data("bankId").flatMap(_.asString).getOrElse("unknown")
   
@@ -183,11 +183,11 @@ private def getBank(data: JsonObject, callContext: CallContext): IO[CBSResponse]
       )
       
       // 4. Return success with JSON
-      CBSResponse.success(obpResponseData)
+      AdapterResponse.success(obpResponseData)
     }
     .handleErrorWith { error =>
       // 5. Handle errors
-      IO.pure(CBSResponse.error("BANK_NOT_FOUND", error.getMessage))
+      IO.pure(AdapterResponse.error("BANK_NOT_FOUND", error.getMessage))
     }
 }
 ```
@@ -275,19 +275,19 @@ val response = JsonObject(
 
 ## Mock Connector Example
 
-See `MockCBSConnector.scala` for a complete example:
+See `MockLocalAdapter.scala` for a complete example:
 
 ```scala
-class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
+class MockLocalAdapter(telemetry: Telemetry) extends LocalAdapter {
   
-  override def name = "Mock-CBS-Connector"
+  override def name = "Mock-Local-Adapter"
   override def version = "1.0.0"
   
   override def handleMessage(
     messageType: String,
     data: JsonObject,
     callContext: CallContext
-  ): IO[CBSResponse] = {
+  ): IO[AdapterResponse] = {
     messageType match {
       case "obp.getBank" => getBank(data, callContext)
       case "obp.getBankAccount" => getBankAccount(data, callContext)
@@ -295,10 +295,10 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
     }
   }
   
-  private def getBank(data: JsonObject, ctx: CallContext): IO[CBSResponse] = {
+  private def getBank(data: JsonObject, ctx: CallContext): IO[AdapterResponse] = {
     val bankId = data("bankId").flatMap(_.asString).getOrElse("unknown")
     
-    IO.pure(CBSResponse.success(
+    IO.pure(AdapterResponse.success(
       JsonObject(
         "bankId" -> Json.fromString(bankId),
         "shortName" -> Json.fromString("Mock Bank"),
@@ -364,9 +364,9 @@ case class TransactionCommons(...)
 case class CustomerCommons(...)
 // ... 50+ more models
 
-trait CBSConnector {
-  def getBank(...): IO[CBSResponse[BankCommons]]
-  def getBankAccount(...): IO[CBSResponse[AccountCommons]]
+trait LocalAdapter {
+  def getBank(...): IO[AdapterResponse[BankCommons]]
+  def getBankAccount(...): IO[AdapterResponse[AccountCommons]]
   // ... 50+ methods
 }
 
@@ -387,8 +387,8 @@ trait CBSConnector {
 case class OutboundMessage(messageType: String, data: JsonObject, ...)
 case class InboundMessage(data: Option[JsonObject], ...)
 
-trait CBSConnector {
-  def handleMessage(messageType: String, data: JsonObject, ...): IO[CBSResponse]
+trait LocalAdapter {
+  def handleMessage(messageType: String, data: JsonObject, ...): IO[AdapterResponse]
 }
 
 // Work directly with JSON from message docs
