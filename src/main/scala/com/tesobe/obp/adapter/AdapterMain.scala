@@ -8,14 +8,16 @@ package com.tesobe.obp.adapter
 
 import cats.effect.{ExitCode, IO, IOApp}
 import com.tesobe.obp.adapter.cbs.implementations.MockLocalAdapter
-import com.tesobe.obp.adapter.config.Config
+import com.tesobe.obp.adapter.config.{AdapterConfig, Config}
+import com.tesobe.obp.adapter.grpc.GrpcServer
 import com.tesobe.obp.adapter.http.DiscoveryServer
+import com.tesobe.obp.adapter.interfaces.LocalAdapter
 import com.tesobe.obp.adapter.messaging.{
   RabbitMQClient,
   RabbitMQConsumer,
   RedisCounter
 }
-import com.tesobe.obp.adapter.telemetry.ConsoleTelemetry
+import com.tesobe.obp.adapter.telemetry.{ConsoleTelemetry, Telemetry}
 
 object AdapterMain extends IOApp {
 
@@ -43,6 +45,9 @@ object AdapterMain extends IOApp {
       )
       _ <- IO.println(s"   Request Queue: ${config.queue.requestQueue}")
       _ <- IO.println(s"   Response Queue: ${config.queue.responseQueue}")
+      _ <- IO.println(
+        s"   gRPC: ${if (config.grpc.enabled) s"enabled on port ${config.grpc.port}" else "disabled"}"
+      )
       _ <- IO.println("")
 
       // Validate configuration
@@ -122,22 +127,26 @@ object AdapterMain extends IOApp {
                          s"[INFO] Visit http://localhost:${config.http.port} to see service info"
                        ) *>
                        IO.println("") *>
+                       withGrpc(config, localAdapter, telemetry) {
+                         RabbitMQConsumer.run(
+                           config,
+                           localAdapter,
+                           telemetry,
+                           Some(redis)
+                         )
+                       }
+                   }
+                 } else {
+                   IO.println("[INFO] HTTP server disabled") *>
+                     IO.println("") *>
+                     withGrpc(config, localAdapter, telemetry) {
                        RabbitMQConsumer.run(
                          config,
                          localAdapter,
                          telemetry,
                          Some(redis)
                        )
-                   }
-                 } else {
-                   IO.println("[INFO] HTTP server disabled") *>
-                     IO.println("") *>
-                     RabbitMQConsumer.run(
-                       config,
-                       localAdapter,
-                       telemetry,
-                       Some(redis)
-                     )
+                     }
                  })
           }
         } else {
@@ -153,12 +162,16 @@ object AdapterMain extends IOApp {
                   s"[INFO] Visit http://localhost:${config.http.port} to see service info"
                 ) *>
                 IO.println("") *>
-                RabbitMQConsumer.run(config, localAdapter, telemetry, None)
+                withGrpc(config, localAdapter, telemetry) {
+                  RabbitMQConsumer.run(config, localAdapter, telemetry, None)
+                }
             }
           } else {
             IO.println("[INFO] HTTP server disabled") *>
               IO.println("") *>
-              RabbitMQConsumer.run(config, localAdapter, telemetry, None)
+              withGrpc(config, localAdapter, telemetry) {
+                RabbitMQConsumer.run(config, localAdapter, telemetry, None)
+              }
           }
         }
       ).as(ExitCode.Success).handleErrorWith { error =>
@@ -168,5 +181,25 @@ object AdapterMain extends IOApp {
       }
 
     } yield exitCode
+  }
+
+  /** Optionally wrap an action with a gRPC server running concurrently.
+    * When gRPC is enabled, starts the server and runs the action in parallel.
+    * When disabled, just runs the action directly.
+    */
+  private def withGrpc(
+      config: AdapterConfig,
+      localAdapter: LocalAdapter,
+      telemetry: Telemetry
+  )(action: IO[Unit]): IO[Unit] = {
+    if (config.grpc.enabled) {
+      GrpcServer.create(config.grpc, localAdapter, telemetry).use { server =>
+        IO.println(
+          s"[gRPC] Server started on port ${config.grpc.port}"
+        ) *> action
+      }
+    } else {
+      action
+    }
   }
 }

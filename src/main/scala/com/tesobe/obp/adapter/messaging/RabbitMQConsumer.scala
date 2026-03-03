@@ -10,16 +10,11 @@
 package com.tesobe.obp.adapter.messaging
 
 import cats.effect.IO
-import cats.syntax.either._
 import com.tesobe.obp.adapter.config.AdapterConfig
 import com.tesobe.obp.adapter.interfaces.LocalAdapter
-import com.tesobe.obp.adapter.models._
 import com.tesobe.obp.adapter.telemetry.Telemetry
 import com.tesobe.obp.adapter.http.DiscoveryServer
-import io.circe.parser._
 import io.circe.syntax._
-
-import scala.concurrent.duration._
 
 /** RabbitMQ consumer for OBP messages
   *
@@ -104,7 +99,6 @@ object RabbitMQConsumer {
       telemetry: Telemetry,
       redis: Option[dev.profunktor.redis4cats.RedisCommands[IO, String, String]]
   ): IO[Unit] = {
-    val startTime = System.currentTimeMillis()
 
     (for {
       // Increment outbound counter
@@ -112,41 +106,17 @@ object RabbitMQConsumer {
         case Some(r) => RedisCounter.incrementOutbound(r, process)
         case None    => IO.unit
       }
-      // Parse the message
-      outboundMsg <- parseOutboundMessage(messageJson)
 
-      // Parse raw JSON to extract additional data fields
-      jsonObj <- IO.fromEither(
-        io.circe.parser.parse(messageJson).flatMap(_.as[io.circe.JsonObject])
-      )
-
-      // Extract data fields (everything except outboundAdapterCallContext)
-      dataFields = jsonObj.filterKeys(_ != "outboundAdapterCallContext")
-
-      _ <- telemetry.recordMessageReceived(
+      // Delegate to shared MessageProcessor
+      result <- MessageProcessor.processRequest(
         process,
-        outboundMsg.outboundAdapterCallContext.correlationId,
-        config.queue.requestQueue
+        messageJson,
+        localAdapter,
+        telemetry
       )
+      (inboundMsg, _) = result
 
-      // Extract call context
-      callContext = CallContext.fromOutbound(outboundMsg)
-
-      // Log message processing
-      _ <- IO.println(s"[${callContext.correlationId}] Processing: $process")
-
-      // Handle adapter-specific messages or delegate to local adapter
-      adapterResponse <- process match {
-        case "obp.getAdapterInfo" =>
-          handleGetAdapterInfo(localAdapter, callContext)
-        case _ =>
-          localAdapter.handleMessage(process, dataFields, callContext)
-      }
-
-      // Build inbound message
-      inboundMsg <- buildInboundMessage(outboundMsg, adapterResponse)
-
-      // Send response
+      // Send response via RabbitMQ
       _ <- sendResponse(client, channel, config.queue.responseQueue, inboundMsg)
 
       // Increment inbound counter
@@ -155,28 +125,15 @@ object RabbitMQConsumer {
         case None    => IO.unit
       }
 
-      // Record success
-      duration = (System.currentTimeMillis() - startTime).millis
-      _ <- telemetry.recordMessageProcessed(
-        process,
-        callContext.correlationId,
-        duration
-      )
-
-      _ <- IO.println(
-        s"[${callContext.correlationId}] [OK] Completed in ${duration.toMillis}ms"
-      )
-
     } yield ()).handleErrorWith { error =>
       // Handle errors
-      val duration = (System.currentTimeMillis() - startTime).millis
       for {
         _ <- telemetry.recordMessageFailed(
           process = "unknown",
           correlationId = "unknown",
           errorCode = "ADAPTER_ERROR",
           errorMessage = error.getMessage,
-          duration = duration
+          duration = scala.concurrent.duration.Duration.Zero
         )
         _ <- IO.println(
           s"[ERROR] Error processing message: ${error.getMessage}"
@@ -186,90 +143,13 @@ object RabbitMQConsumer {
     }
   }
 
-  /** Handle getAdapterInfo - returns adapter information
-    */
-  private def handleGetAdapterInfo(
-      localAdapter: LocalAdapter,
-      callContext: CallContext
-  ): IO[com.tesobe.obp.adapter.interfaces.LocalAdapterResult] = {
-    import io.circe.Json
-    import io.circe.JsonObject
-    import scala.sys.process._
-
-    val gitCommit =
-      try {
-        "git rev-parse HEAD".!!.trim
-      } catch {
-        case _: Exception => "unknown"
-      }
-
-    IO.pure(
-      com.tesobe.obp.adapter.interfaces.LocalAdapterResult.success(
-        JsonObject(
-          "name" -> Json.fromString("OBP-Rabbit-Cats-Adapter"),
-          "version" -> Json.fromString("1.0.0-SNAPSHOT"),
-          "git_commit" -> Json.fromString(gitCommit),
-          "date" -> Json.fromString(java.time.Instant.now().toString)
-        ),
-        Nil
-      )
-    )
-  }
-
-  /** Parse JSON string to OutboundMessage
-    */
-  private def parseOutboundMessage(json: String): IO[OutboundMessage] = {
-    IO.fromEither(
-      decode[OutboundMessage](json)
-        .leftMap(err =>
-          new RuntimeException(
-            s"Failed to parse outbound message: ${err.getMessage}"
-          )
-        )
-    )
-  }
-
-  /** Build inbound response message
-    */
-  private def buildInboundMessage(
-      outboundMsg: OutboundMessage,
-      adapterResponse: com.tesobe.obp.adapter.interfaces.LocalAdapterResult
-  ): IO[InboundMessage] = {
-    val ctx = outboundMsg.outboundAdapterCallContext
-
-    adapterResponse match {
-      case com.tesobe.obp.adapter.interfaces.LocalAdapterResult
-            .Success(data, messages) =>
-        IO.pure(
-          InboundMessage.success(
-            correlationId = ctx.correlationId,
-            sessionId = ctx.sessionId,
-            data = data,
-            backendMessages = messages
-          )
-        )
-
-      case com.tesobe.obp.adapter.interfaces.LocalAdapterResult
-            .Error(code, message, messages) =>
-        IO.pure(
-          InboundMessage.error(
-            correlationId = ctx.correlationId,
-            sessionId = ctx.sessionId,
-            errorCode = code,
-            errorMessage = message,
-            backendMessages = messages
-          )
-        )
-    }
-  }
-
   /** Send response message to response queue
     */
   private def sendResponse(
       client: RabbitMQClient,
       channel: com.rabbitmq.client.Channel,
       responseQueue: String,
-      message: InboundMessage
+      message: com.tesobe.obp.adapter.models.InboundMessage
   ): IO[Unit] = {
     for {
       // Convert to JSON

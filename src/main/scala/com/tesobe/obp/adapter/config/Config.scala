@@ -56,12 +56,19 @@ case class RedisConfig(
     enabled: Boolean
 )
 
+/** gRPC server configuration */
+case class GrpcConfig(
+    port: Int,
+    enabled: Boolean
+)
+
 /** Complete adapter configuration */
 case class AdapterConfig(
     http: HttpConfig,
     rabbitmq: RabbitMQConfig,
     queue: QueueConfig,
     redis: RedisConfig,
+    grpc: GrpcConfig,
     logLevel: String,
     enableMetrics: Boolean
 )
@@ -109,11 +116,17 @@ object Config {
       enabled = sys.env.getOrElse("REDIS_ENABLED", "true").toBoolean
     )
 
+    val grpcConfig = GrpcConfig(
+      port = sys.env.getOrElse("GRPC_PORT", "50051").toInt,
+      enabled = sys.env.getOrElse("GRPC_ENABLED", "false").toBoolean
+    )
+
     AdapterConfig(
       http = httpConfig,
       rabbitmq = rabbitmqConfig,
       queue = queueConfig,
       redis = redisConfig,
+      grpc = grpcConfig,
       logLevel = sys.env.getOrElse("LOG_LEVEL", "INFO"),
       enableMetrics = sys.env.getOrElse("ENABLE_METRICS", "true").toBoolean
     )
@@ -138,5 +151,11 @@ object Config {
       config.queue.responseQueue.nonEmpty,
       "Response queue name must not be empty"
     )
+    if (config.grpc.enabled) {
+      require(
+        config.grpc.port > 0 && config.grpc.port < 65536,
+        "gRPC port must be between 1 and 65535"
+      )
+    }
   }
 }
