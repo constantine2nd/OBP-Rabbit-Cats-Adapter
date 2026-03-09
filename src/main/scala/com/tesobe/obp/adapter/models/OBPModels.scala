@@ -191,7 +191,7 @@ object KeyValue {
 case class InboundMessage(
   inboundAdapterCallContext: InboundAdapterCallContext,
   status: Status,
-  data: Option[JsonObject]
+  data: Option[Json]
 )
 
 object InboundMessage {
@@ -204,7 +204,7 @@ object InboundMessage {
   def success(
     correlationId: String,
     sessionId: Option[String],
-    data: JsonObject,
+    data: Json,
     generalContext: List[KeyValue] = Nil,
     backendMessages: List[BackendMessage] = Nil
   ): InboundMessage = InboundMessage(

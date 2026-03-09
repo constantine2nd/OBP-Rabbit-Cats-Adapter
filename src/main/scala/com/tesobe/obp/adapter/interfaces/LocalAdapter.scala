@@ -19,7 +19,7 @@ package com.tesobe.obp.adapter.interfaces
 
 import cats.effect.IO
 import com.tesobe.obp.adapter.models._
-import io.circe.JsonObject
+import io.circe.{Json, JsonObject}
 
 /**
  * Core interface for Core Banking System (CBS) adapters.
@@ -94,7 +94,7 @@ object LocalAdapterResult {
    * Successful response with JSON data matching OBP message docs format
    */
   final case class Success(
-    data: JsonObject,
+    data: Json,
     backendMessages: List[BackendMessage] = Nil
   ) extends LocalAdapterResult
 
@@ -109,6 +109,9 @@ object LocalAdapterResult {
 
   /** Convenience constructors */
   def success(data: JsonObject, messages: List[BackendMessage] = Nil): LocalAdapterResult =
+    Success(Json.fromJsonObject(data), messages)
+
+  def success(data: Json, messages: List[BackendMessage]): LocalAdapterResult =
     Success(data, messages)
 
   def error(code: String, message: String, messages: List[BackendMessage] = Nil): LocalAdapterResult =
